@@ -4,6 +4,7 @@ import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -100,6 +101,51 @@ def youtube_download(
     current_user: models.User = Depends(get_current_user),
 ):
     import yt_dlp
+
+    # --- Extract info first (no download) to check for duplicates ---
+    ydl_info_opts: dict = {
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+    }
+    if FFMPEG_LOCATION:
+        ydl_info_opts["ffmpeg_location"] = FFMPEG_LOCATION
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_info_opts) as ydl:
+            pre_info = ydl.extract_info(body.url, download=False)
+    except Exception:
+        pre_info = None
+
+    if pre_info:
+        video_title_pre = pre_info.get("title", "")
+        channel_pre = pre_info.get("uploader") or pre_info.get("channel") or pre_info.get("artist")
+        artist_pre, title_pre = _parse_artist_title(video_title_pre, channel_pre)
+
+        # Check if a track with the same title + artist already exists (any user)
+        existing = (
+            db.query(models.Track)
+            .filter(
+                models.Track.title == title_pre,
+                models.Track.artist == artist_pre,
+            )
+            .first()
+        )
+        if existing:
+            data = track_to_response(existing)
+            return JSONResponse(
+                content=data.model_dump(mode="json"),
+                headers={"X-Track-Existing": "true"},
+            )
+
+        # Reject videos longer than 10 minutes — likely not a song
+        duration_pre = float(pre_info.get("duration", 0) or 0)
+        if duration_pre > 600:
+            raise HTTPException(
+                status_code=400,
+                detail="This video is too long to be a song (over 10 minutes)",
+            )
 
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
@@ -307,18 +353,28 @@ def youtube_search(body: YouTubeSearchRequest):
     if not body.query.strip():
         raise HTTPException(status_code=400, detail="Search query must not be empty")
 
+    # Use extract_flat to get search listing without hitting each video
+    # This avoids failures from unavailable/geo-blocked videos
     ydl_opts: dict = {
-        "default_search": "ytsearch5",
+        "default_search": "ytsearch20",
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
-        "extract_flat": False,
+        "extract_flat": "in_playlist",
+        "ignoreerrors": True,
     }
+
+    # Bias toward music results
+    search_query = body.query.strip()
+    query_lower = search_query.lower()
+    music_keywords = {"song", "music", "audio", "lyrics", "official", "remix", "cover", "acoustic"}
+    if not any(kw in query_lower for kw in music_keywords):
+        search_query += " song"
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"ytsearch5:{body.query}", download=False)
+            info = ydl.extract_info(f"ytsearch20:{search_query}", download=False)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Search failed: {exc}")
 
@@ -330,19 +386,53 @@ def youtube_search(body: YouTubeSearchRequest):
         if entry is None:
             continue
 
+        video_id = entry.get("id", "")
         video_title = entry.get("title", "Unknown Title")
         channel = entry.get("uploader") or entry.get("channel") or "Unknown Artist"
+        duration = float(entry.get("duration", 0) or 0)
+        url = entry.get("webpage_url") or entry.get("url") or ""
+
+        # Skip non-music: too short (<30s) or too long (>10min)
+        if duration > 0 and (duration < 30 or duration > 600):
+            continue
+
+        # Skip non-music content by title keywords
+        title_lower = video_title.lower()
+        non_music = {
+            "vlog", "mukbang", "unboxing", "haul", "grwm", "get ready with me",
+            "tutorial", "review", "reaction", "gameplay", "playthrough",
+            "let's play", "podcast", "interview", "documentary", "trailer",
+            "behind the scenes", "cooking", "recipe", "asmr", "prank",
+            "challenge", "q&a", "storytime", "story time", "day in my life",
+            "morning routine", "night routine", "room tour", "house tour",
+            "full movie", "full episode", "compilation",
+        }
+        if any(kw in title_lower for kw in non_music):
+            continue
+
+        # With extract_flat, url may just be the video id
+        if url and not url.startswith("http"):
+            url = f"https://www.youtube.com/watch?v={video_id}"
+
+        # Build thumbnail URL from video id if not provided
+        thumbnail = entry.get("thumbnail") or ""
+        if not thumbnail and video_id:
+            thumbnail = f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg"
+
         artist, title = _parse_artist_title(video_title, channel)
 
         results.append(
             YouTubeSearchResult(
-                id=entry.get("id") or str(len(results)),
-                url=entry.get("webpage_url") or entry.get("url", ""),
+                id=video_id or str(len(results)),
+                url=url,
                 title=title,
                 channel=channel,
-                duration=float(entry.get("duration", 0) or 0),
-                thumbnail=entry.get("thumbnail") or "",
+                duration=duration,
+                thumbnail=thumbnail,
             )
         )
 
-    return results[:5]
+        if len(results) >= 5:
+            break
+
+    return results

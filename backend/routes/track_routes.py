@@ -111,6 +111,7 @@ def list_tracks(
     genre: str | None = None,
     artist: str | None = None,
     search: str | None = None,
+    sort: str | None = None,
     db: Session = Depends(get_db),
 ):
     query = db.query(models.Track)
@@ -131,7 +132,10 @@ def list_tracks(
     pages = math.ceil(total / limit) if total > 0 else 1
     offset = (page - 1) * limit
 
-    tracks = query.order_by(models.Track.uploaded_at.desc()).offset(offset).limit(limit).all()
+    if sort == "most_played":
+        tracks = query.order_by(models.Track.play_count.desc()).offset(offset).limit(limit).all()
+    else:
+        tracks = query.order_by(models.Track.uploaded_at.desc()).offset(offset).limit(limit).all()
 
     return schemas.PaginatedTracks(
         tracks=[track_to_response(t) for t in tracks],
@@ -139,6 +143,80 @@ def list_tracks(
         page=page,
         pages=pages,
     )
+
+
+@router.get("/suggested", response_model=list[schemas.TrackResponse])
+def suggested_tracks(
+    limit: int = Query(6, ge=1, le=20),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Suggest tracks based on the user's listening history."""
+    from sqlalchemy import func, or_
+
+    # Get user's top genres (up to 3)
+    top_genres = (
+        db.query(models.Track.genre, func.count().label("cnt"))
+        .join(models.ListeningHistory, models.ListeningHistory.track_id == models.Track.id)
+        .filter(
+            models.ListeningHistory.user_id == current_user.id,
+            models.Track.genre.isnot(None),
+            models.Track.genre != "Unknown",
+        )
+        .group_by(models.Track.genre)
+        .order_by(func.count().desc())
+        .limit(3)
+        .all()
+    )
+    genre_names = [g[0] for g in top_genres]
+
+    # Get user's top artists (up to 3)
+    top_artists = (
+        db.query(models.Track.artist, func.count().label("cnt"))
+        .join(models.ListeningHistory, models.ListeningHistory.track_id == models.Track.id)
+        .filter(
+            models.ListeningHistory.user_id == current_user.id,
+            models.Track.artist.isnot(None),
+            models.Track.artist != "Unknown Artist",
+        )
+        .group_by(models.Track.artist)
+        .order_by(func.count().desc())
+        .limit(3)
+        .all()
+    )
+    artist_names = [a[0] for a in top_artists]
+
+    # Get IDs of tracks the user has listened to a lot
+    heavily_played_ids = (
+        db.query(models.ListeningHistory.track_id)
+        .filter(models.ListeningHistory.user_id == current_user.id)
+        .group_by(models.ListeningHistory.track_id)
+        .having(func.count() >= 3)
+        .all()
+    )
+    exclude_ids = {row[0] for row in heavily_played_ids}
+
+    if genre_names or artist_names:
+        conditions = []
+        if genre_names:
+            conditions.append(models.Track.genre.in_(genre_names))
+        if artist_names:
+            conditions.append(models.Track.artist.in_(artist_names))
+
+        query = db.query(models.Track).filter(or_(*conditions))
+
+        if exclude_ids:
+            query = query.filter(models.Track.id.notin_(exclude_ids))
+
+        tracks = query.order_by(models.Track.play_count.asc()).limit(limit).all()
+    else:
+        # No history — return least-played tracks as discovery
+        query = db.query(models.Track)
+        if exclude_ids:
+            query = query.filter(models.Track.id.notin_(exclude_ids))
+        tracks = query.order_by(models.Track.play_count.asc()).limit(limit).all()
+
+    return [track_to_response(t) for t in tracks]
 
 
 @router.get("/{track_id}", response_model=schemas.TrackResponse)
@@ -525,9 +603,14 @@ def update_track(
     return track_to_response(track)
 
 
+class PlayRequest(BaseModel):
+    played_at: str | None = None  # ISO timestamp from offline queue
+
+
 @router.post("/{track_id}/play")
 def record_play(
     track_id: int,
+    body: PlayRequest | None = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -538,12 +621,23 @@ def record_play(
     # Increment play count
     track.play_count = (track.play_count or 0) + 1
 
+    # Use provided timestamp (offline play) or default to now
+    from datetime import datetime, timezone
+    listened_at = None
+    if body and body.played_at:
+        try:
+            listened_at = datetime.fromisoformat(body.played_at.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+
     # Create listening history entry
     history = models.ListeningHistory(
         user_id=current_user.id,
         track_id=track_id,
         duration_listened=track.duration,
     )
+    if listened_at:
+        history.listened_at = listened_at
     db.add(history)
     db.commit()
 

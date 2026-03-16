@@ -1,5 +1,5 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useState, useRef, useCallback } from 'react';
+import { useToast } from '../components/Toast';
 import * as api from '../api';
 import { Track } from '../types';
 import { Upload as UploadIcon, File, CheckCircle, AlertCircle, Music, X, Search, Download, Loader, Youtube, ImageIcon } from 'lucide-react';
@@ -31,13 +31,12 @@ function formatDuration(seconds: number): string {
 }
 
 const Upload: React.FC = () => {
-  const { user } = useAuth();
+  const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [activeTab, setActiveTab] = useState<TabType>('upload');
   const [dragActive, setDragActive] = useState(false);
   const [uploads, setUploads] = useState<UploadItem[]>([]);
-  const [uploadHistory, setUploadHistory] = useState<Track[]>([]);
 
   // YouTube state
   const [ytQuery, setYtQuery] = useState('');
@@ -50,21 +49,6 @@ const Upload: React.FC = () => {
   const [ytError, setYtError] = useState('');
   const [backfilling, setBackfilling] = useState(false);
   const [backfillMsg, setBackfillMsg] = useState('');
-
-  useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        const data = await api.getTracks({ limit: 50 });
-        const tracks = Array.isArray(data) ? data : data.tracks || [];
-        setUploadHistory(tracks);
-      } catch (err) {
-        console.error('Failed to fetch upload history:', err);
-      }
-    };
-    if (user) {
-      fetchHistory();
-    }
-  }, [user]);
 
   const uploadFile = useCallback(async (file: globalThis.File) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -91,8 +75,6 @@ const Upload: React.FC = () => {
           u.id === id ? { ...u, status: 'done', progress: 100, track } : u
         )
       );
-
-      setUploadHistory((prev) => [track, ...prev]);
     } catch (err: any) {
       setUploads((prev) =>
         prev.map((u) =>
@@ -151,14 +133,6 @@ const Upload: React.FC = () => {
     setUploads((prev) => prev.filter((u) => u.id !== id));
   };
 
-  const formatDate = (dateStr: string) => {
-    try {
-      return new Date(dateStr).toLocaleDateString();
-    } catch {
-      return dateStr;
-    }
-  };
-
   // YouTube handlers
   const handleYtSearch = async () => {
     if (!ytQuery.trim()) return;
@@ -184,9 +158,13 @@ const Upload: React.FC = () => {
   const handleYtDownload = async (result: YouTubeResult) => {
     setYtDownloading((prev) => ({ ...prev, [result.id]: 'loading' }));
     try {
-      const track = await api.youtubeDownload(result.url);
+      const { track, existing } = await api.youtubeDownload(result.url);
       setYtDownloading((prev) => ({ ...prev, [result.id]: 'done' }));
-      setUploadHistory((prev) => [track, ...prev]);
+      if (existing) {
+        showToast(`"${track.title}" already exists in the library`, 'info');
+      } else {
+        showToast(`"${track.title}" downloaded successfully`, 'success');
+      }
     } catch (err: any) {
       setYtDownloading((prev) => ({ ...prev, [result.id]: 'error' }));
     }
@@ -198,10 +176,14 @@ const Upload: React.FC = () => {
     setYtDirectStatus('idle');
     setYtError('');
     try {
-      const track = await api.youtubeDownload(ytDirectUrl.trim());
+      const { track, existing } = await api.youtubeDownload(ytDirectUrl.trim());
       setYtDirectDownloading(false);
       setYtDirectStatus('done');
-      setUploadHistory((prev) => [track, ...prev]);
+      if (existing) {
+        showToast(`"${track.title}" already exists in the library`, 'info');
+      } else {
+        showToast(`"${track.title}" downloaded successfully`, 'success');
+      }
       setTimeout(() => setYtDirectStatus('idle'), 3000);
     } catch (err: any) {
       setYtDirectDownloading(false);
@@ -222,10 +204,6 @@ const Upload: React.FC = () => {
     try {
       const result = await api.youtubeBackfillCovers();
       setBackfillMsg(result.message);
-      // Refresh upload history to show new covers
-      const data = await api.getTracks({ limit: 50 });
-      const tracks = Array.isArray(data) ? data : data.tracks || [];
-      setUploadHistory(tracks);
     } catch (err: any) {
       setBackfillMsg(err?.message || 'Failed to backfill covers');
     } finally {
@@ -510,34 +488,6 @@ const Upload: React.FC = () => {
         </div>
       )}
 
-      {/* Upload History (shown on both tabs) */}
-      {uploadHistory.length > 0 && (
-        <div>
-          <h2 className="upload__history-title">Upload History</h2>
-          <div className="upload__history">
-            {uploadHistory.map((track) => (
-              <div key={track.id} className="upload__history-row">
-                <div className="upload__history-art">
-                  {track.cover_art_url ? (
-                    <img src={track.cover_art_url} alt="" />
-                  ) : (
-                    <div className="upload__history-art-placeholder">
-                      <Music size={18} />
-                    </div>
-                  )}
-                </div>
-                <div className="upload__history-text">
-                  <div className="upload__history-name">{track.title || 'Untitled'}</div>
-                  <div className="upload__history-artist">{track.artist || 'Unknown Artist'}</div>
-                </div>
-                {track.uploaded_at && (
-                  <div className="upload__history-date">{formatDate(track.uploaded_at)}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

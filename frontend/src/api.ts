@@ -178,6 +178,7 @@ export async function getTracks(params?: {
   genre?: string;
   artist?: string;
   search?: string;
+  sort?: string;
 }): Promise<PaginatedTracks> {
   const searchParams = new URLSearchParams();
   if (params?.page) searchParams.set('page', String(params.page));
@@ -185,6 +186,7 @@ export async function getTracks(params?: {
   if (params?.genre) searchParams.set('genre', params.genre);
   if (params?.artist) searchParams.set('artist', params.artist);
   if (params?.search) searchParams.set('search', params.search);
+  if (params?.sort) searchParams.set('sort', params.sort);
 
   const query = searchParams.toString();
   const url = `${API_BASE}/tracks${query ? `?${query}` : ''}`;
@@ -194,6 +196,11 @@ export async function getTracks(params?: {
 
 export async function getTrack(id: number): Promise<Track> {
   const res = await fetchWithAuth(`${API_BASE}/tracks/${id}`);
+  return res.json();
+}
+
+export async function getSuggestedTracks(limit: number = 6): Promise<Track[]> {
+  const res = await fetchWithAuth(`${API_BASE}/tracks/suggested?limit=${limit}`);
   return res.json();
 }
 
@@ -253,7 +260,41 @@ export async function updateTrack(
 }
 
 export async function recordPlay(id: number): Promise<void> {
-  await fetchWithAuth(`${API_BASE}/tracks/${id}/play`, { method: 'POST' });
+  if (!navigator.onLine) {
+    // Queue for later when offline
+    const { queuePendingPlay } = await import('./db');
+    await queuePendingPlay(id);
+    return;
+  }
+  try {
+    await fetchWithAuth(`${API_BASE}/tracks/${id}/play`, { method: 'POST' });
+  } catch {
+    // Network failed unexpectedly — queue it
+    const { queuePendingPlay } = await import('./db');
+    await queuePendingPlay(id);
+  }
+}
+
+export async function flushPendingPlays(): Promise<void> {
+  const { getPendingPlays, removePendingPlay } = await import('./db');
+  const pending = await getPendingPlays();
+  if (pending.length === 0) return;
+
+  for (const play of pending) {
+    try {
+      await fetchWithAuth(`${API_BASE}/tracks/${play.trackId}/play`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ played_at: play.playedAt }),
+      });
+      if (play.id != null) {
+        await removePendingPlay(play.id);
+      }
+    } catch {
+      // Still offline or server error — stop flushing, try again later
+      break;
+    }
+  }
 }
 
 export async function getPlaylists(): Promise<Playlist[]> {
@@ -300,9 +341,17 @@ export async function addTrackToPlaylist(playlistId: number, trackId: number): P
   return res.json();
 }
 
-export async function removeTrackFromPlaylist(playlistId: number, trackId: number): Promise<Playlist> {
-  const res = await fetchWithAuth(`${API_BASE}/playlists/${playlistId}/tracks/${trackId}`, {
+export async function removeTrackFromPlaylist(playlistId: number, trackId: number): Promise<void> {
+  await fetchWithAuth(`${API_BASE}/playlists/${playlistId}/tracks/${trackId}`, {
     method: 'DELETE',
+  });
+}
+
+export async function reorderPlaylistTracks(playlistId: number, trackIds: number[]): Promise<Playlist> {
+  const res = await fetchWithAuth(`${API_BASE}/playlists/${playlistId}/reorder`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ track_ids: trackIds }),
   });
   return res.json();
 }
@@ -326,13 +375,15 @@ export async function youtubeSearch(query: string): Promise<any[]> {
   return res.json();
 }
 
-export async function youtubeDownload(url: string): Promise<Track> {
+export async function youtubeDownload(url: string): Promise<{ track: Track; existing: boolean }> {
   const res = await fetchWithAuth(`${API_BASE}/youtube/download`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
   });
-  return res.json();
+  const track: Track = await res.json();
+  const existing = res.headers.get('X-Track-Existing') === 'true';
+  return { track, existing };
 }
 
 export async function youtubeBackfillCovers(): Promise<{ message: string }> {

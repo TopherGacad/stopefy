@@ -12,6 +12,7 @@ import Auth from './pages/Auth';
 import Admin from './pages/Admin';
 import SettingsPage from './pages/Settings';
 import NowPlaying from './pages/NowPlaying';
+import { ToastProvider } from './components/Toast';
 import './App.css';
 
 function ProtectedRoute() {
@@ -47,6 +48,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <PlayerProvider>
+          <ToastProvider>
           <Routes>
             <Route element={<PublicRoute />}>
               <Route path="/login" element={<Auth mode="login" />} />
@@ -65,6 +67,7 @@ export default function App() {
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+        </ToastProvider>
         </PlayerProvider>
       </AuthProvider>
     </BrowserRouter>

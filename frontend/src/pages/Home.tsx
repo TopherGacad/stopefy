@@ -4,16 +4,18 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePlayer } from '../contexts/PlayerContext';
 import * as api from '../api';
 import { Track, Playlist } from '../types';
-import { Play, Settings } from 'lucide-react';
+import { Play, Settings, Sparkles, ChevronRight } from 'lucide-react';
 
 const GENRES = [
   { name: 'Pop', gradient: 'linear-gradient(135deg, #F5E500, #FF6B6B)' },
   { name: 'Rock', gradient: 'linear-gradient(135deg, #E13333, #1A1A1A)' },
   { name: 'Hip-Hop', gradient: 'linear-gradient(135deg, #F5E500, #FF8C00)' },
+  { name: 'Rap', gradient: 'linear-gradient(135deg, #FF6347, #1A1A1A)' },
+  { name: 'R&B', gradient: 'linear-gradient(135deg, #8B008B, #1A1A1A)' },
+  { name: 'OPM', gradient: 'linear-gradient(135deg, #0038A8, #CE1126)' },
   { name: 'Electronic', gradient: 'linear-gradient(135deg, #00CED1, #1A1A1A)' },
   { name: 'Jazz', gradient: 'linear-gradient(135deg, #DAA520, #1A1A1A)' },
   { name: 'Classical', gradient: 'linear-gradient(135deg, #6B6B6B, #242424)' },
-  { name: 'R&B', gradient: 'linear-gradient(135deg, #8B008B, #1A1A1A)' },
   { name: 'Country', gradient: 'linear-gradient(135deg, #D2691E, #1A1A1A)' },
   { name: 'Metal', gradient: 'linear-gradient(135deg, #2E2E2E, #000000)' },
   { name: 'Indie', gradient: 'linear-gradient(135deg, #3CB371, #1A1A1A)' },
@@ -35,20 +37,33 @@ const Home: React.FC = () => {
 
   const [popularTracks, setPopularTracks] = useState<Track[]>([]);
   const [recentTracks, setRecentTracks] = useState<Track[]>([]);
+  const [suggested, setSuggested] = useState<Track[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [popularRes, recentRes, playlistRes] = await Promise.all([
-          api.getTracks({ limit: 10 }),
-          api.getTracks({ limit: 10, page: 1 }),
+        const [popularRes, recentRes, suggestedRes, playlistRes] = await Promise.allSettled([
+          api.getTracks({ limit: 5, sort: 'most_played' }),
+          api.getTracks({ limit: 3 }),
+          api.getSuggestedTracks(6),
           api.getPlaylists(),
         ]);
-        setPopularTracks(Array.isArray(popularRes) ? popularRes : popularRes.tracks || []);
-        setRecentTracks(Array.isArray(recentRes) ? recentRes : recentRes.tracks || []);
-        setPlaylists(Array.isArray(playlistRes) ? playlistRes : []);
+        if (popularRes.status === 'fulfilled') {
+          const v = popularRes.value;
+          setPopularTracks(Array.isArray(v) ? v : v.tracks || []);
+        }
+        if (recentRes.status === 'fulfilled') {
+          const v = recentRes.value;
+          setRecentTracks(Array.isArray(v) ? v : v.tracks || []);
+        }
+        if (suggestedRes.status === 'fulfilled') {
+          setSuggested(suggestedRes.value);
+        }
+        if (playlistRes.status === 'fulfilled') {
+          setPlaylists(Array.isArray(playlistRes.value) ? playlistRes.value : []);
+        }
       } catch (err) {
         console.error('Failed to fetch home data:', err);
       } finally {
@@ -99,37 +114,42 @@ const Home: React.FC = () => {
     </div>
   );
 
-  const renderPlaylistCard = (playlist: Playlist) => (
-    <div
-      key={playlist.id}
-      className="playlist-card"
-      onClick={() => navigate(`/playlist/${playlist.id}`)}
-    >
-      <div className="playlist-card__art">
-        {playlist.cover_image ? (
-          <img src={playlist.cover_image} alt={playlist.name} />
-        ) : (
-          <div
-            className="playlist-card__art-placeholder"
-            style={{
-              background: 'linear-gradient(135deg, #F5E500, #2E2E2E)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '100%',
-              height: '100%',
-            }}
-          >
-            <span style={{ fontSize: '2rem' }}>&#9835;</span>
-          </div>
-        )}
+  const renderPlaylistCard = (playlist: Playlist) => {
+    const coverUrl = playlist.cover_image
+      || (playlist.tracks && playlist.tracks.length > 0 ? playlist.tracks[0].cover_art_url : null);
+
+    return (
+      <div
+        key={playlist.id}
+        className="playlist-card"
+        onClick={() => navigate(`/playlist/${playlist.id}`)}
+      >
+        <div className="playlist-card__art">
+          {coverUrl ? (
+            <img src={coverUrl} alt={playlist.name} />
+          ) : (
+            <div
+              className="playlist-card__art-placeholder"
+              style={{
+                background: 'linear-gradient(135deg, #F5E500, #2E2E2E)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '100%',
+                height: '100%',
+              }}
+            >
+              <span style={{ fontSize: '2rem' }}>&#9835;</span>
+            </div>
+          )}
+        </div>
+        <div className="playlist-card__name">{playlist.name}</div>
+        <div className="playlist-card__count">
+          {playlist.track_count ?? 0} tracks
+        </div>
       </div>
-      <div className="playlist-card__name">{playlist.name}</div>
-      <div className="playlist-card__count">
-        {playlist.track_count ?? 0} tracks
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="home">
@@ -146,12 +166,30 @@ const Home: React.FC = () => {
         </button>
       </div>
 
+      <div className="wrapped-banner" onClick={() => navigate('/wrapped')}>
+        <Sparkles size={20} />
+        <div className="wrapped-banner__text">
+          <span className="wrapped-banner__title">Your {new Date().getFullYear()} Wrapped</span>
+          <span className="wrapped-banner__subtitle">See your listening stats</span>
+        </div>
+        <ChevronRight size={20} />
+      </div>
+
       {loading ? (
         <div className="home__loading" style={{ color: '#6B6B6B', textAlign: 'center', padding: '3rem' }}>
           Loading...
         </div>
       ) : (
         <>
+          {playlists.length > 0 && (
+            <div className="section section--playlists">
+              <h2 className="section__title">Your Playlists</h2>
+              <div className="scroll-row">
+                {playlists.map(renderPlaylistCard)}
+              </div>
+            </div>
+          )}
+
           {popularTracks.length > 0 && (
             <div className="section section--featured">
               <h2 className="section__title">Popular Tracks</h2>
@@ -162,19 +200,82 @@ const Home: React.FC = () => {
           )}
 
           {recentTracks.length > 0 && (
-            <div className="section">
+            <div className="section section--recent">
               <h2 className="section__title">Recently Added</h2>
-              <div className="scroll-row">
-                {recentTracks.map(renderTrackCard)}
+              <div className="recent-list">
+                {recentTracks.map((track, idx) => (
+                  <div
+                    key={track.id}
+                    className="recent-row"
+                    onClick={() => handlePlayTrack(track, recentTracks)}
+                  >
+                    <span className="recent-row__number">{idx + 1}</span>
+                    <div className="recent-row__art">
+                      {track.cover_art_url ? (
+                        <img src={track.cover_art_url} alt={track.title} />
+                      ) : (
+                        <div
+                          className="recent-row__art-placeholder"
+                          style={{
+                            background: 'linear-gradient(135deg, #F5E500, #242424)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '100%',
+                            height: '100%',
+                          }}
+                        >
+                          <span style={{ fontSize: '1.2rem' }}>&#9835;</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="recent-row__info">
+                      <div className="recent-row__title">{track.title}</div>
+                      <div className="recent-row__artist">{track.artist}</div>
+                    </div>
+                    <span className="recent-row__badge">NEW</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
-          {playlists.length > 0 && (
-            <div className="section">
-              <h2 className="section__title">Your Playlists</h2>
-              <div className="scroll-row">
-                {playlists.map(renderPlaylistCard)}
+          {suggested.length > 0 && (
+            <div className="section section--suggested">
+              <h2 className="section__title">Suggested for You</h2>
+              <div className="suggested-grid">
+                {suggested.map((track) => (
+                  <div
+                    key={track.id}
+                    className="suggested-card"
+                    onClick={() => handlePlayTrack(track, suggested)}
+                  >
+                    <div className="suggested-card__art">
+                      {track.cover_art_url ? (
+                        <img src={track.cover_art_url} alt={track.title} />
+                      ) : (
+                        <div
+                          className="suggested-card__art-placeholder"
+                          style={{
+                            background: 'linear-gradient(135deg, #F5E500, #242424)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '100%',
+                            height: '100%',
+                          }}
+                        >
+                          <span style={{ fontSize: '1.5rem' }}>&#9835;</span>
+                        </div>
+                      )}
+                      <div className="suggested-card__play">
+                        <Play size={18} fill="#000" stroke="#000" />
+                      </div>
+                    </div>
+                    <div className="suggested-card__title">{track.title}</div>
+                    <div className="suggested-card__artist">{track.artist}</div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

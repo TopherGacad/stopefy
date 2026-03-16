@@ -96,12 +96,54 @@ export default defineConfig({
             },
           },
           {
+            urlPattern: /\/api\/auth\/me$/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-auth-me',
+              expiration: {
+                maxEntries: 1,
+                maxAgeSeconds: 60 * 60 * 24 * 7,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
             urlPattern: /\/api\/tracks\?/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-tracks-list',
               expiration: {
                 maxEntries: 20,
+                maxAgeSeconds: 60 * 60 * 24,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: /\/api\/tracks\/suggested/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-tracks-suggested',
+              expiration: {
+                maxEntries: 5,
+                maxAgeSeconds: 60 * 60 * 24,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: /\/api\/playlists\/\d+$/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-playlist-detail',
+              expiration: {
+                maxEntries: 30,
                 maxAgeSeconds: 60 * 60 * 24,
               },
               cacheableResponse: {

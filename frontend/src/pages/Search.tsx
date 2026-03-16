@@ -3,22 +3,47 @@ import { useSearchParams } from 'react-router-dom';
 import * as api from '../api';
 import { Playlist, SearchResults } from '../types';
 import TrackList from '../components/TrackList';
-import { Search as SearchIcon, Camera, Music } from 'lucide-react';
+import { Search as SearchIcon, Camera, Music, X, Clock, CloudSun, Flame, PartyPopper, Target, CloudRain, Car, Heart, Zap } from 'lucide-react';
 
-const GENRES = [
-  { name: 'Pop', gradient: 'linear-gradient(135deg, #F5E500, #FF6B6B)' },
-  { name: 'Rock', gradient: 'linear-gradient(135deg, #E13333, #1A1A1A)' },
-  { name: 'Hip-Hop', gradient: 'linear-gradient(135deg, #F5E500, #FF8C00)' },
-  { name: 'Electronic', gradient: 'linear-gradient(135deg, #00CED1, #1A1A1A)' },
-  { name: 'Jazz', gradient: 'linear-gradient(135deg, #DAA520, #1A1A1A)' },
-  { name: 'Classical', gradient: 'linear-gradient(135deg, #6B6B6B, #242424)' },
-  { name: 'R&B', gradient: 'linear-gradient(135deg, #8B008B, #1A1A1A)' },
-  { name: 'Country', gradient: 'linear-gradient(135deg, #D2691E, #1A1A1A)' },
-  { name: 'Metal', gradient: 'linear-gradient(135deg, #2E2E2E, #000000)' },
-  { name: 'Indie', gradient: 'linear-gradient(135deg, #3CB371, #1A1A1A)' },
-  { name: 'Latin', gradient: 'linear-gradient(135deg, #FF4500, #1A1A1A)' },
-  { name: 'K-Pop', gradient: 'linear-gradient(135deg, #FF69B4, #1A1A1A)' },
+const RECENT_SEARCHES_KEY = 'stopefy_recent_searches';
+const MAX_RECENT = 8;
+
+const MOODS = [
+  { name: 'Chill', Icon: CloudSun, gradient: 'linear-gradient(135deg, #00B4DB, #0083B0)', keywords: 'chill lo-fi relaxing' },
+  { name: 'Workout', Icon: Flame, gradient: 'linear-gradient(135deg, #F5E500, #FF6B6B)', keywords: 'workout energy pump' },
+  { name: 'Party', Icon: PartyPopper, gradient: 'linear-gradient(135deg, #FF4500, #FF8C00)', keywords: 'party dance upbeat' },
+  { name: 'Focus', Icon: Target, gradient: 'linear-gradient(135deg, #667eea, #764ba2)', keywords: 'focus study instrumental' },
+  { name: 'Sad', Icon: CloudRain, gradient: 'linear-gradient(135deg, #4B6CB7, #182848)', keywords: 'sad emotional heartbreak' },
+  { name: 'Drive', Icon: Car, gradient: 'linear-gradient(135deg, #E13333, #1A1A1A)', keywords: 'drive road trip cruising' },
+  { name: 'Romance', Icon: Heart, gradient: 'linear-gradient(135deg, #8B008B, #FF69B4)', keywords: 'love romantic slow' },
+  { name: 'Hype', Icon: Zap, gradient: 'linear-gradient(135deg, #F5E500, #1DB954)', keywords: 'hype rap hip-hop' },
 ];
+
+function getRecentSearches(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_SEARCHES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentSearch(query: string) {
+  const trimmed = query.trim();
+  if (!trimmed) return;
+  const recent = getRecentSearches().filter((s) => s.toLowerCase() !== trimmed.toLowerCase());
+  recent.unshift(trimmed);
+  localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(recent.slice(0, MAX_RECENT)));
+}
+
+function removeRecentSearch(query: string) {
+  const recent = getRecentSearches().filter((s) => s !== query);
+  localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(recent));
+}
+
+function clearRecentSearches() {
+  localStorage.removeItem(RECENT_SEARCHES_KEY);
+}
 
 const ARTIST_COLORS = [
   '#F5E500', '#00CED1', '#E13333', '#1DB954', '#FF8C00',
@@ -39,9 +64,10 @@ const Search: React.FC = () => {
   const [results, setResults] = useState<SearchResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>(getRecentSearches());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const performSearch = useCallback(async (searchQuery: string) => {
+  const performSearch = useCallback(async (searchQuery: string, save = true) => {
     if (!searchQuery.trim()) {
       setResults(null);
       setHasSearched(false);
@@ -49,6 +75,10 @@ const Search: React.FC = () => {
     }
     setLoading(true);
     setHasSearched(true);
+    if (save) {
+      saveRecentSearch(searchQuery);
+      setRecentSearches(getRecentSearches());
+    }
     try {
       const data = await api.search(searchQuery);
       setResults(data);
@@ -88,13 +118,29 @@ const Search: React.FC = () => {
     performSearch(artistName);
   };
 
-  const handleGenreClick = (genreName: string) => {
-    setQuery(genreName);
-    setSearchParams({ genre: genreName });
-    performSearch(genreName);
+  const handleMoodClick = (mood: typeof MOODS[0]) => {
+    setQuery(mood.keywords);
+    setSearchParams({ genre: mood.name });
+    performSearch(mood.keywords);
   };
 
-  const showGenreBrowse = !query && !hasSearched;
+  const handleRecentClick = (term: string) => {
+    setQuery(term);
+    performSearch(term, false);
+  };
+
+  const handleRemoveRecent = (e: React.MouseEvent, term: string) => {
+    e.stopPropagation();
+    removeRecentSearch(term);
+    setRecentSearches(getRecentSearches());
+  };
+
+  const handleClearRecent = () => {
+    clearRecentSearches();
+    setRecentSearches([]);
+  };
+
+  const showBrowse = !query && !hasSearched;
   const showResults = hasSearched && results;
   const noResults =
     hasSearched &&
@@ -129,21 +175,48 @@ const Search: React.FC = () => {
         </div>
       )}
 
-      {!loading && showGenreBrowse && (
+      {!loading && showBrowse && (
         <>
-          <h2 className="search__browse-label">Browse all</h2>
-          <div className="search__genre-grid">
-            {GENRES.map((genre) => (
+          {recentSearches.length > 0 && (
+            <div className="search__recent">
+              <div className="search__recent-header">
+                <h2 className="search__recent-label">Recent searches</h2>
+                <button className="search__recent-clear" onClick={handleClearRecent}>
+                  Clear all
+                </button>
+              </div>
+              <div className="search__recent-chips">
+                {recentSearches.map((term) => (
+                  <div
+                    key={term}
+                    className="search__recent-chip"
+                    onClick={() => handleRecentClick(term)}
+                  >
+                    <Clock size={14} />
+                    <span>{term}</span>
+                    <button
+                      className="search__recent-chip-remove"
+                      onClick={(e) => handleRemoveRecent(e, term)}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <h2 className="search__browse-label">Browse by mood</h2>
+          <div className="search__mood-grid">
+            {MOODS.map((mood) => (
               <div
-                key={genre.name}
-                className="search__genre-card"
-                style={{ background: genre.gradient }}
-                onClick={() => handleGenreClick(genre.name)}
+                key={mood.name}
+                className="search__mood-card"
+                style={{ background: mood.gradient }}
+                onClick={() => handleMoodClick(mood)}
               >
-                <span className="search__genre-card-name">{genre.name}</span>
-                <div className="search__genre-card-img">
-                  <Music size={32} />
-                </div>
+                <mood.Icon className="search__mood-icon" size={28} />
+                <span className="search__mood-name">{mood.name}</span>
               </div>
             ))}
           </div>

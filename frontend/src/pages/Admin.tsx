@@ -11,12 +11,12 @@ import {
   HardDrive,
   BarChart3,
   Search,
-  CheckSquare,
-  Square,
   Loader,
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 
 interface Stats {
@@ -96,7 +96,7 @@ const Admin: React.FC = () => {
   const [compressing, setCompressing] = useState(false);
   const [compressMsg, setCompressMsg] = useState('');
 
-  const TRACKS_PER_PAGE = 50;
+  const TRACKS_PER_PAGE = 20;
 
   if (!user || !isAdmin) {
     return <Navigate to="/" replace />;
@@ -244,109 +244,107 @@ const Admin: React.FC = () => {
     }
   };
 
-  const handleTrackSearch = () => {
+  const handleTrackSearchSubmit = () => {
     fetchTracks(1, trackSearch);
   };
 
   const totalPages = Math.ceil(tracksTotal / TRACKS_PER_PAGE);
 
-  const tabStyle = (t: Tab): React.CSSProperties => ({
-    padding: '10px 20px',
-    fontWeight: 600,
-    fontSize: '0.95rem',
-    cursor: 'pointer',
-    background: 'none',
-    border: 'none',
-    borderBottom: tab === t ? '2px solid #F5E500' : '2px solid transparent',
-    color: tab === t ? '#F5E500' : '#6B6B6B',
-    transition: 'all 0.2s ease',
-  });
+  // Pagination page numbers (max 5)
+  const getPageNumbers = (): (number | '...')[] => {
+    if (totalPages <= 5) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const pages: (number | '...')[] = [];
+    if (tracksPage <= 3) {
+      pages.push(1, 2, 3, 4, '...', totalPages);
+    } else if (tracksPage >= totalPages - 2) {
+      pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+    } else {
+      pages.push(1, '...', tracksPage - 1, tracksPage, tracksPage + 1, '...', totalPages);
+    }
+    return pages;
+  };
+
+  const rangeStart = (tracksPage - 1) * TRACKS_PER_PAGE + 1;
+  const rangeEnd = Math.min(tracksPage * TRACKS_PER_PAGE, tracksTotal);
 
   if (loading) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: '#6B6B6B' }}>
-        <div className="loading-spinner" />
+      <div className="admin">
+        <div className="admin__loading">
+          <Loader size={24} className="spin" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '0 0 2rem 0' }}>
-      <h1 style={{ color: '#FFFFFF', marginBottom: '0.5rem' }}>Admin Panel</h1>
-      <p style={{ color: '#6B6B6B', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-        Manage tracks, users, and monitor your music library.
-      </p>
-
-      {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #363636', marginBottom: '1.5rem' }}>
-        <button style={tabStyle('overview')} onClick={() => setTab('overview')}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <BarChart3 size={16} /> Overview
-          </span>
-        </button>
-        <button style={tabStyle('tracks')} onClick={() => setTab('tracks')}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <Music size={16} /> Tracks ({stats?.total_tracks ?? 0})
-          </span>
-        </button>
-        <button style={tabStyle('users')} onClick={() => setTab('users')}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <Users size={16} /> Users ({stats?.total_users ?? 0})
-          </span>
-        </button>
+    <div className="admin">
+      {/* Header */}
+      <div className="admin__header">
+        <h1 className="admin__title">Admin Panel</h1>
+        <p className="admin__subtitle">Manage tracks, users, and monitor your library.</p>
       </div>
 
-      {/* ===== Overview ===== */}
+      {/* Tab Row */}
+      <div className="admin__tabs">
+        <div className="admin__tabs-scroll">
+          <button
+            className={`admin__tab ${tab === 'overview' ? 'admin__tab--active' : ''}`}
+            onClick={() => setTab('overview')}
+          >
+            Overview
+          </button>
+          <button
+            className={`admin__tab ${tab === 'tracks' ? 'admin__tab--active' : ''}`}
+            onClick={() => setTab('tracks')}
+          >
+            Tracks ({stats?.total_tracks ?? 0})
+          </button>
+          <button
+            className={`admin__tab ${tab === 'users' ? 'admin__tab--active' : ''}`}
+            onClick={() => setTab('users')}
+          >
+            Users ({stats?.total_users ?? 0})
+          </button>
+        </div>
+        <div className="admin__tabs-divider" />
+      </div>
+
+      {/* ===== Overview Tab ===== */}
       {tab === 'overview' && stats && (
-        <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            {[
-              { label: 'Total Tracks', value: stats.total_tracks, icon: <Music size={24} />, color: '#F5E500' },
-              { label: 'Total Users', value: stats.total_users, icon: <Users size={24} />, color: '#1DB954' },
-              { label: 'Total Plays', value: stats.total_plays, icon: <BarChart3 size={24} />, color: '#3B82F6' },
-              { label: 'Storage Used', value: formatBytes(stats.storage_bytes), icon: <HardDrive size={24} />, color: '#F59E0B' },
-            ].map((card) => (
-              <div
-                key={card.label}
-                style={{
-                  background: '#242424',
-                  borderRadius: '1rem',
-                  padding: '1.5rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                }}
-              >
-                <div style={{ color: card.color, opacity: 0.8 }}>{card.icon}</div>
-                <div>
-                  <div style={{ color: '#FFFFFF', fontSize: '1.5rem', fontWeight: 700 }}>{card.value}</div>
-                  <div style={{ color: '#6B6B6B', fontSize: '0.85rem' }}>{card.label}</div>
-                </div>
-              </div>
-            ))}
+        <div className="admin__section">
+          <div className="admin__stats-grid">
+            <div className="admin__stat-card">
+              <Music size={20} className="admin__stat-icon admin__stat-icon--yellow" />
+              <div className="admin__stat-number">{stats.total_tracks}</div>
+              <div className="admin__stat-label">Total Tracks</div>
+            </div>
+            <div className="admin__stat-card">
+              <Users size={20} className="admin__stat-icon admin__stat-icon--green" />
+              <div className="admin__stat-number">{stats.total_users}</div>
+              <div className="admin__stat-label">Total Users</div>
+            </div>
+            <div className="admin__stat-card">
+              <BarChart3 size={20} className="admin__stat-icon admin__stat-icon--blue" />
+              <div className="admin__stat-number">{stats.total_plays}</div>
+              <div className="admin__stat-label">Total Plays</div>
+            </div>
+            <div className="admin__stat-card">
+              <HardDrive size={20} className="admin__stat-icon admin__stat-icon--orange" />
+              <div className="admin__stat-number">{formatBytes(stats.storage_bytes)}</div>
+              <div className="admin__stat-label">Storage Used</div>
+            </div>
           </div>
 
-          {/* Storage optimization */}
-          <div style={{
-            background: '#242424',
-            borderRadius: '1rem',
-            padding: '1.25rem 1.5rem',
-            marginTop: '1.5rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '1rem',
-            flexWrap: 'wrap',
-          }}>
-            <div>
-              <div style={{ color: '#FFFFFF', fontWeight: 500, fontSize: '0.95rem' }}>
-                Compress All Tracks
-              </div>
-              <div style={{ color: '#6B6B6B', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                Re-encodes tracks to 128kbps MP3 to save storage. Only compresses files that will get smaller.
-              </div>
+          <div className="admin__compress-card">
+            <div className="admin__compress-title">Compress All Tracks</div>
+            <div className="admin__compress-subtitle">
+              Re-encodes tracks to 128kbps MP3 to save storage. Only compresses files that will get smaller.
             </div>
             <button
+              className="admin__compress-btn"
               onClick={async () => {
                 setCompressing(true);
                 setCompressMsg('');
@@ -361,529 +359,275 @@ const Admin: React.FC = () => {
                 }
               }}
               disabled={compressing}
-              style={{
-                padding: '0.6rem 1.25rem',
-                background: '#F5E500',
-                border: 'none',
-                borderRadius: '0.5rem',
-                color: '#1A1A1A',
-                cursor: compressing ? 'not-allowed' : 'pointer',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                flexShrink: 0,
-                opacity: compressing ? 0.6 : 1,
-              }}
             >
               {compressing ? (
                 <><Loader size={16} className="spin" /> Compressing...</>
               ) : (
-                <><HardDrive size={16} /> Compress</>
+                'Compress All'
               )}
             </button>
-            {compressMsg && (
-              <div style={{ width: '100%', color: '#6B6B6B', fontSize: '0.85rem' }}>
-                {compressMsg}
-              </div>
-            )}
+            {compressMsg && <div className="admin__compress-msg">{compressMsg}</div>}
           </div>
         </div>
       )}
 
-      {/* ===== Tracks Management ===== */}
+      {/* ===== Tracks Tab ===== */}
       {tab === 'tracks' && (
-        <div>
-          {/* Search + Bulk actions */}
-          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', flex: 1, minWidth: '200px' }}>
-              <input
-                type="text"
-                placeholder="Search tracks..."
-                value={trackSearch}
-                onChange={(e) => setTrackSearch(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleTrackSearch()}
-                style={{
-                  flex: 1,
-                  padding: '0.6rem 1rem',
-                  background: '#2E2E2E',
-                  border: '1px solid #363636',
-                  borderRadius: '0.5rem',
-                  color: '#FFFFFF',
-                  fontSize: '0.9rem',
-                  outline: 'none',
-                }}
-              />
-              <button
-                onClick={handleTrackSearch}
-                style={{
-                  padding: '0.6rem 1rem',
-                  background: '#F5E500',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  color: '#1A1A1A',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                }}
-              >
-                <Search size={16} /> Search
-              </button>
-            </div>
+        <div className="admin__section">
+          {/* Search Bar */}
+          <div className="admin__search-bar">
+            <Search size={16} className="admin__search-icon" />
+            <input
+              type="text"
+              className="admin__search-input"
+              placeholder="Search tracks..."
+              value={trackSearch}
+              onChange={(e) => {
+                setTrackSearch(e.target.value);
+                if (e.target.value === '') fetchTracks(1, '');
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && handleTrackSearchSubmit()}
+            />
+          </div>
 
+          {/* Bulk Action Row */}
+          <div className="admin__bulk-row">
+            <div className="admin__bulk-left" onClick={toggleSelectAll}>
+              {selectedTracks.size === tracks.length && tracks.length > 0 ? (
+                <CheckSquare size={20} className="admin__check--active" />
+              ) : (
+                <Square size={20} className="admin__check" />
+              )}
+              <span className="admin__bulk-label">Select All</span>
+            </div>
             {selectedTracks.size > 0 && (
               <button
+                className="admin__bulk-delete"
                 onClick={() => setConfirmDelete({ type: 'bulk' })}
                 disabled={bulkDeleting}
-                style={{
-                  padding: '0.6rem 1rem',
-                  background: '#ef4444',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  color: '#FFFFFF',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                  opacity: bulkDeleting ? 0.6 : 1,
-                }}
               >
-                {bulkDeleting ? <Loader size={16} className="spin" /> : <Trash2 size={16} />}
-                Delete Selected ({selectedTracks.size})
+                {bulkDeleting ? <Loader size={14} className="spin" /> : <Trash2 size={14} />}
+                Delete ({selectedTracks.size})
               </button>
             )}
           </div>
 
-          {/* Track table */}
-          <div style={{ background: '#242424', borderRadius: '0.75rem', overflow: 'hidden' }}>
-            {/* Header */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '40px 50px 1fr 100px 100px 80px 70px 80px',
-                padding: '0.75rem 1rem',
-                borderBottom: '1px solid #363636',
-                color: '#6B6B6B',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-              }}
-            >
-              <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }} onClick={toggleSelectAll}>
-                {selectedTracks.size === tracks.length && tracks.length > 0 ? (
-                  <CheckSquare size={16} style={{ color: '#F5E500' }} />
-                ) : (
-                  <Square size={16} />
-                )}
-              </div>
-              <div></div>
-              <div>Title / Artist</div>
-              <div>Genre</div>
-              <div>Uploaded By</div>
-              <div>Plays</div>
-              <div>Duration</div>
-              <div></div>
-            </div>
-
-            {/* Rows */}
+          {/* Track List */}
+          <div className="admin__track-list">
             {tracks.map((track) => (
               <div
                 key={track.id}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '40px 50px 1fr 100px 100px 80px 70px 80px',
-                  padding: '0.6rem 1rem',
-                  borderBottom: '1px solid #2E2E2E',
-                  alignItems: 'center',
-                  background: selectedTracks.has(track.id) ? 'rgba(245, 229, 0, 0.05)' : 'transparent',
-                  transition: 'background 0.15s ease',
-                }}
+                className={`admin__track-row ${selectedTracks.has(track.id) ? 'admin__track-row--selected' : ''}`}
               >
                 <div
-                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                  className="admin__track-check"
                   onClick={() => toggleTrackSelection(track.id)}
                 >
                   {selectedTracks.has(track.id) ? (
-                    <CheckSquare size={16} style={{ color: '#F5E500' }} />
+                    <CheckSquare size={20} className="admin__check--active" />
                   ) : (
-                    <Square size={16} style={{ color: '#6B6B6B' }} />
+                    <Square size={20} className="admin__check" />
                   )}
                 </div>
-                <div>
+
+                <div className="admin__track-art" onClick={() => startEditing(track)}>
                   {track.cover_art_url ? (
-                    <img
-                      src={track.cover_art_url}
-                      alt=""
-                      style={{ width: 36, height: 36, borderRadius: '0.25rem', objectFit: 'cover' }}
-                    />
+                    <img src={track.cover_art_url} alt="" />
                   ) : (
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: '0.25rem',
-                        background: 'linear-gradient(135deg, #F5E500, #242424)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Music size={14} style={{ color: '#1A1A1A' }} />
+                    <div className="admin__track-art-placeholder">
+                      <Music size={16} />
                     </div>
                   )}
                 </div>
-                <div style={{ minWidth: 0 }}>
+
+                <div className="admin__track-info" onClick={() => startEditing(track)}>
                   {editingTrack === track.id ? (
-                    <>
+                    <div className="admin__track-edit">
                       <input
+                        className="admin__edit-input"
                         value={editValues.title}
                         onChange={(e) => setEditValues((v) => ({ ...v, title: e.target.value }))}
-                        style={{ width: '100%', padding: '0.2rem 0.4rem', background: '#2E2E2E', border: '1px solid #F5E500', borderRadius: '0.25rem', color: '#FFFFFF', fontSize: '0.85rem', marginBottom: '0.2rem', outline: 'none' }}
+                        placeholder="Title"
+                        autoFocus
                       />
                       <input
+                        className="admin__edit-input admin__edit-input--secondary"
                         value={editValues.artist}
                         onChange={(e) => setEditValues((v) => ({ ...v, artist: e.target.value }))}
-                        style={{ width: '100%', padding: '0.2rem 0.4rem', background: '#2E2E2E', border: '1px solid #363636', borderRadius: '0.25rem', color: '#6B6B6B', fontSize: '0.8rem', outline: 'none' }}
+                        placeholder="Artist"
                       />
-                    </>
+                      <select
+                        className="admin__edit-select"
+                        value={editValues.genre}
+                        onChange={(e) => setEditValues((v) => ({ ...v, genre: e.target.value }))}
+                      >
+                        <option value="Unknown">Unknown</option>
+                        <option value="Pop">Pop</option>
+                        <option value="Rock">Rock</option>
+                        <option value="Hip-Hop">Hip-Hop</option>
+                        <option value="R&B">R&amp;B</option>
+                        <option value="Electronic">Electronic</option>
+                        <option value="Jazz">Jazz</option>
+                        <option value="Classical">Classical</option>
+                        <option value="Country">Country</option>
+                        <option value="Metal">Metal</option>
+                        <option value="Indie">Indie</option>
+                        <option value="Latin">Latin</option>
+                        <option value="K-Pop">K-Pop</option>
+                        <option value="OPM">OPM</option>
+                        <option value="Reggae">Reggae</option>
+                        <option value="Blues">Blues</option>
+                        <option value="Soul">Soul</option>
+                        <option value="Folk">Folk</option>
+                        <option value="Acoustic">Acoustic</option>
+                        <option value="Alternative">Alternative</option>
+                        <option value="Punk">Punk</option>
+                        <option value="Dance">Dance</option>
+                      </select>
+                      <div className="admin__edit-actions">
+                        <button className="admin__edit-save" onClick={(e) => { e.stopPropagation(); handleSaveEdit(); }}>Save</button>
+                        <button className="admin__edit-cancel" onClick={(e) => { e.stopPropagation(); setEditingTrack(null); }}>Cancel</button>
+                      </div>
+                    </div>
                   ) : (
                     <>
-                      <div style={{ color: '#FFFFFF', fontWeight: 500, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {track.title}
-                      </div>
-                      <div style={{ color: '#6B6B6B', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {track.artist}
-                      </div>
+                      <div className="admin__track-title">{track.title}</div>
+                      <div className="admin__track-artist">{track.artist}</div>
+                      {track.genre && track.genre !== 'Unknown' && (
+                        <span className="admin__track-genre">{track.genre}</span>
+                      )}
                     </>
                   )}
                 </div>
-                <div style={{ minWidth: 0 }}>
-                  {editingTrack === track.id ? (
-                    <select
-                      value={editValues.genre}
-                      onChange={(e) => setEditValues((v) => ({ ...v, genre: e.target.value }))}
-                      style={{ width: '100%', padding: '0.3rem', background: '#2E2E2E', border: '1px solid #F5E500', borderRadius: '0.25rem', color: '#FFFFFF', fontSize: '0.8rem', outline: 'none' }}
-                    >
-                      <option value="Unknown">Unknown</option>
-                      <option value="Pop">Pop</option>
-                      <option value="Rock">Rock</option>
-                      <option value="Hip-Hop">Hip-Hop</option>
-                      <option value="R&B">R&B</option>
-                      <option value="Electronic">Electronic</option>
-                      <option value="Jazz">Jazz</option>
-                      <option value="Classical">Classical</option>
-                      <option value="Country">Country</option>
-                      <option value="Metal">Metal</option>
-                      <option value="Indie">Indie</option>
-                      <option value="Latin">Latin</option>
-                      <option value="K-Pop">K-Pop</option>
-                      <option value="OPM">OPM</option>
-                      <option value="Reggae">Reggae</option>
-                      <option value="Blues">Blues</option>
-                      <option value="Soul">Soul</option>
-                      <option value="Folk">Folk</option>
-                      <option value="Acoustic">Acoustic</option>
-                      <option value="Alternative">Alternative</option>
-                      <option value="Punk">Punk</option>
-                      <option value="Dance">Dance</option>
-                    </select>
-                  ) : (
-                    <span
-                      style={{
-                        color: track.genre === 'Unknown' ? '#6B6B6B' : '#F5E500',
-                        fontSize: '0.85rem',
-                        cursor: 'pointer',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        display: 'block',
-                      }}
-                      onClick={(e) => { e.stopPropagation(); startEditing(track); }}
-                      title="Click to edit"
-                    >
-                      {track.genre}
-                    </span>
-                  )}
-                </div>
-                <div style={{ color: '#6B6B6B', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {track.uploaded_by_username}
-                </div>
-                <div style={{ color: '#6B6B6B', fontSize: '0.85rem' }}>
-                  {track.play_count}
-                </div>
-                <div style={{ color: '#6B6B6B', fontSize: '0.85rem' }}>
-                  {formatDuration(track.duration)}
-                </div>
-                <div style={{ display: 'flex', gap: '0.25rem' }}>
-                  {editingTrack === track.id ? (
-                    <>
-                      <button
-                        onClick={handleSaveEdit}
-                        style={{ background: 'none', border: 'none', color: '#1DB954', cursor: 'pointer', padding: '0.25rem', display: 'flex' }}
-                        title="Save"
-                      >
-                        <CheckSquare size={16} />
-                      </button>
-                      <button
-                        onClick={() => setEditingTrack(null)}
-                        style={{ background: 'none', border: 'none', color: '#6B6B6B', cursor: 'pointer', padding: '0.25rem', display: 'flex' }}
-                        title="Cancel"
-                      >
-                        <Square size={16} />
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmDelete({ type: 'track', id: track.id })}
-                      disabled={deleting === track.id}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#ef4444',
-                        cursor: 'pointer',
-                        padding: '0.25rem',
-                        display: 'flex',
-                        opacity: deleting === track.id ? 0.4 : 0.7,
-                        transition: 'opacity 0.2s',
-                      }}
-                      title="Delete track"
-                    >
-                      {deleting === track.id ? <Loader size={16} className="spin" /> : <Trash2 size={16} />}
-                    </button>
-                  )}
+
+                <div className="admin__track-meta">
+                  <span className="admin__track-plays">{track.play_count} plays</span>
+                  <span className="admin__track-duration">{formatDuration(track.duration)}</span>
+                  <button
+                    className="admin__track-delete"
+                    onClick={() => setConfirmDelete({ type: 'track', id: track.id })}
+                    disabled={deleting === track.id}
+                  >
+                    {deleting === track.id ? <Loader size={18} className="spin" /> : <Trash2 size={18} />}
+                  </button>
                 </div>
               </div>
             ))}
 
             {tracks.length === 0 && (
-              <div style={{ padding: '2rem', textAlign: 'center', color: '#6B6B6B' }}>
-                No tracks found.
-              </div>
+              <div className="admin__empty">No tracks found.</div>
             )}
           </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
-              <button
-                onClick={() => fetchTracks(tracksPage - 1, trackSearch)}
-                disabled={tracksPage <= 1}
-                style={{
-                  background: 'none',
-                  border: '1px solid #363636',
-                  borderRadius: '0.5rem',
-                  color: tracksPage <= 1 ? '#363636' : '#FFFFFF',
-                  cursor: tracksPage <= 1 ? 'not-allowed' : 'pointer',
-                  padding: '0.5rem',
-                  display: 'flex',
-                }}
-              >
-                <ChevronLeft size={18} />
-              </button>
-              <span style={{ color: '#6B6B6B', fontSize: '0.9rem' }}>
-                Page {tracksPage} of {totalPages}
+            <div className="admin__pagination">
+              <span className="admin__pagination-info">
+                Showing {rangeStart}–{rangeEnd} of {tracksTotal}
               </span>
-              <button
-                onClick={() => fetchTracks(tracksPage + 1, trackSearch)}
-                disabled={tracksPage >= totalPages}
-                style={{
-                  background: 'none',
-                  border: '1px solid #363636',
-                  borderRadius: '0.5rem',
-                  color: tracksPage >= totalPages ? '#363636' : '#FFFFFF',
-                  cursor: tracksPage >= totalPages ? 'not-allowed' : 'pointer',
-                  padding: '0.5rem',
-                  display: 'flex',
-                }}
-              >
-                <ChevronRight size={18} />
-              </button>
+              <div className="admin__pagination-controls">
+                <button
+                  className="admin__page-btn"
+                  onClick={() => fetchTracks(tracksPage - 1, trackSearch)}
+                  disabled={tracksPage <= 1}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                {getPageNumbers().map((p, i) =>
+                  p === '...' ? (
+                    <span key={`dots-${i}`} className="admin__page-dots">...</span>
+                  ) : (
+                    <button
+                      key={p}
+                      className={`admin__page-num ${tracksPage === p ? 'admin__page-num--active' : ''}`}
+                      onClick={() => fetchTracks(p as number, trackSearch)}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+                <button
+                  className="admin__page-btn"
+                  onClick={() => fetchTracks(tracksPage + 1, trackSearch)}
+                  disabled={tracksPage >= totalPages}
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ===== Users Management ===== */}
+      {/* ===== Users Tab ===== */}
       {tab === 'users' && (
-        <div style={{ background: '#242424', borderRadius: '0.75rem', overflow: 'hidden' }}>
-          {/* Header */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 200px 100px 100px 120px',
-              padding: '0.75rem 1rem',
-              borderBottom: '1px solid #363636',
-              color: '#6B6B6B',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}
-          >
-            <div>User</div>
-            <div>Email</div>
-            <div>Tracks</div>
-            <div>Role</div>
-            <div>Actions</div>
-          </div>
-
-          {users.map((u) => (
-            <div
-              key={u.id}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 200px 100px 100px 120px',
-                padding: '0.75rem 1rem',
-                borderBottom: '1px solid #2E2E2E',
-                alignItems: 'center',
-              }}
-            >
-              <div>
-                <div style={{ color: '#FFFFFF', fontWeight: 500, fontSize: '0.9rem' }}>
-                  {u.username}
-                  {u.id === user?.id && (
-                    <span style={{ color: '#F5E500', fontSize: '0.75rem', marginLeft: '0.5rem' }}>(you)</span>
+        <div className="admin__section">
+          <div className="admin__user-list">
+            {users.map((u) => (
+              <div key={u.id} className="admin__user-card">
+                <div className="admin__user-row1">
+                  <div className="admin__user-name">
+                    {u.username}
+                    {u.id === user?.id && <span className="admin__user-you">(you)</span>}
+                  </div>
+                  <span className={`admin__user-badge ${u.is_admin ? 'admin__user-badge--admin' : ''}`}>
+                    {u.is_admin ? 'Admin' : 'User'}
+                  </span>
+                </div>
+                <div className="admin__user-email">{u.email}</div>
+                <div className="admin__user-row3">
+                  <span className="admin__user-date">Joined {formatDate(u.created_at)}</span>
+                  <span className="admin__user-tracks">{u.track_count} tracks</span>
+                  {u.id !== user?.id && (
+                    <div className="admin__user-actions">
+                      <button
+                        className="admin__user-action-btn"
+                        onClick={() => handleToggleAdmin(u.id)}
+                        title={u.is_admin ? 'Remove admin' : 'Make admin'}
+                      >
+                        {u.is_admin ? <ShieldOff size={20} /> : <Shield size={20} />}
+                      </button>
+                      <button
+                        className="admin__user-action-btn admin__user-action-btn--danger"
+                        onClick={() => setConfirmDelete({ type: 'user', id: u.id })}
+                        title="Delete user"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
                   )}
                 </div>
-                <div style={{ color: '#6B6B6B', fontSize: '0.8rem' }}>
-                  Joined {formatDate(u.created_at)}
-                </div>
               </div>
-              <div style={{ color: '#6B6B6B', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {u.email}
-              </div>
-              <div style={{ color: '#6B6B6B', fontSize: '0.85rem' }}>
-                {u.track_count}
-              </div>
-              <div>
-                <span
-                  style={{
-                    padding: '0.2rem 0.6rem',
-                    borderRadius: '1rem',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    background: u.is_admin ? 'rgba(245, 229, 0, 0.15)' : 'rgba(107, 107, 107, 0.15)',
-                    color: u.is_admin ? '#F5E500' : '#6B6B6B',
-                  }}
-                >
-                  {u.is_admin ? 'Admin' : 'User'}
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {u.id !== user?.id && (
-                  <>
-                    <button
-                      onClick={() => handleToggleAdmin(u.id)}
-                      style={{
-                        background: 'none',
-                        border: '1px solid #363636',
-                        borderRadius: '0.375rem',
-                        color: u.is_admin ? '#F5E500' : '#6B6B6B',
-                        cursor: 'pointer',
-                        padding: '0.3rem 0.5rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.25rem',
-                        fontSize: '0.8rem',
-                      }}
-                      title={u.is_admin ? 'Remove admin' : 'Make admin'}
-                    >
-                      {u.is_admin ? <ShieldOff size={14} /> : <Shield size={14} />}
-                    </button>
-                    <button
-                      onClick={() => setConfirmDelete({ type: 'user', id: u.id })}
-                      style={{
-                        background: 'none',
-                        border: '1px solid #363636',
-                        borderRadius: '0.375rem',
-                        color: '#ef4444',
-                        cursor: 'pointer',
-                        padding: '0.3rem 0.5rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                      }}
-                      title="Delete user and all their tracks"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
       {/* ===== Confirm Delete Modal ===== */}
       {confirmDelete && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-          onClick={() => setConfirmDelete(null)}
-        >
-          <div
-            style={{
-              background: '#242424',
-              borderRadius: '1rem',
-              padding: '2rem',
-              maxWidth: '400px',
-              width: '90%',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-              <AlertCircle size={24} style={{ color: '#ef4444' }} />
-              <h3 style={{ color: '#FFFFFF', margin: 0 }}>Confirm Delete</h3>
+        <div className="admin__modal-overlay" onClick={() => setConfirmDelete(null)}>
+          <div className="admin__modal" onClick={(e) => e.stopPropagation()}>
+            <div className="admin__modal-header">
+              <AlertCircle size={24} className="admin__modal-icon" />
+              <h3 className="admin__modal-title">Confirm Delete</h3>
             </div>
-            <p style={{ color: '#6B6B6B', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+            <p className="admin__modal-text">
               {confirmDelete.type === 'bulk'
                 ? `Are you sure you want to delete ${selectedTracks.size} selected tracks? This will remove the audio files permanently.`
                 : confirmDelete.type === 'user'
                   ? 'Are you sure you want to delete this user? All their uploaded tracks will also be deleted permanently.'
                   : 'Are you sure you want to delete this track? The audio file will be removed permanently.'}
             </p>
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setConfirmDelete(null)}
-                style={{
-                  padding: '0.6rem 1.25rem',
-                  background: '#2E2E2E',
-                  border: '1px solid #363636',
-                  borderRadius: '0.5rem',
-                  color: '#FFFFFF',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem',
-                }}
-              >
+            <div className="admin__modal-actions">
+              <button className="admin__modal-cancel" onClick={() => setConfirmDelete(null)}>
                 Cancel
               </button>
               <button
+                className="admin__modal-confirm"
                 onClick={() => {
                   if (confirmDelete.type === 'bulk') handleBulkDelete();
                   else if (confirmDelete.type === 'track' && confirmDelete.id) handleDeleteTrack(confirmDelete.id);
                   else if (confirmDelete.type === 'user' && confirmDelete.id) handleDeleteUser(confirmDelete.id);
-                }}
-                style={{
-                  padding: '0.6rem 1.25rem',
-                  background: '#ef4444',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  color: '#FFFFFF',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem',
-                  fontWeight: 600,
                 }}
               >
                 Delete

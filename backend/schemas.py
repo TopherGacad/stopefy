@@ -86,6 +86,10 @@ class PlaylistAddTrack(BaseModel):
     track_id: int
 
 
+class PlaylistReorder(BaseModel):
+    track_ids: list[int]
+
+
 class PlaylistResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

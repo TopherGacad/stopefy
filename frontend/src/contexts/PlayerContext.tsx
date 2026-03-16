@@ -7,7 +7,7 @@ import React, {
   useCallback,
 } from 'react';
 import type { Track } from '../types';
-import { getStreamUrl, recordPlay } from '../api';
+import { getStreamUrl, recordPlay, flushPendingPlays } from '../api';
 import { getOfflineTrack } from '../db';
 
 type RepeatMode = 'none' | 'one' | 'all';
@@ -41,18 +41,51 @@ interface PlayerContextType {
 const PlayerContext = createContext<PlayerContextType>(null!);
 export const usePlayer = () => useContext(PlayerContext);
 
+const STORAGE_KEY = 'stopefy-player';
+
+interface PersistedState {
+  currentTrack: Track | null;
+  queue: Track[];
+  queueIndex: number;
+  currentTime: number;
+  shuffle: boolean;
+  repeat: RepeatMode;
+}
+
+function loadPersistedState(): PersistedState | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedState(state: PersistedState) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Storage full or unavailable — ignore
+  }
+}
+
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(new Audio());
   const objectUrlRef = useRef<string | null>(null);
+  const restoredRef = useRef(false);
 
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  // Restore persisted state on first mount
+  const persisted = useRef(loadPersistedState()).current;
+
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(persisted?.currentTrack ?? null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [queue, setQueue] = useState<Track[]>([]);
-  const [queueIndex, setQueueIndex] = useState(-1);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [queue, setQueue] = useState<Track[]>(persisted?.queue ?? []);
+  const [queueIndex, setQueueIndex] = useState(persisted?.queueIndex ?? -1);
+  const [currentTime, setCurrentTime] = useState(persisted?.currentTime ?? 0);
   const [duration, setDuration] = useState(0);
-  const [shuffle, setShuffle] = useState(false);
-  const [repeat, setRepeat] = useState<RepeatMode>('none');
+  const [shuffle, setShuffle] = useState(persisted?.shuffle ?? false);
+  const [repeat, setRepeat] = useState<RepeatMode>(persisted?.repeat ?? 'none');
 
   // Initialize volume from localStorage
   const [volume, setVolumeState] = useState(() => {
@@ -227,6 +260,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [getNextIndex, playByIndex]);
 
+  // ----- Flush pending plays when coming back online -----
+  useEffect(() => {
+    const handleOnline = () => {
+      flushPendingPlays().catch(() => {});
+    };
+    window.addEventListener('online', handleOnline);
+    // Also flush on mount in case we came back online before the app opened
+    flushPendingPlays().catch(() => {});
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
+
   // ----- Public API -----
 
   const play = useCallback(
@@ -373,9 +417,77 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     queueIndexRef.current = -1;
   }, []);
 
+  // Restore audio source + seek position on first mount (paused)
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+
+    const track = currentTrackRef.current;
+    const savedTime = persisted?.currentTime ?? 0;
+    if (!track) return;
+
+    (async () => {
+      // Clean up any existing object URL
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+
+      const offlineTrack = await getOfflineTrack(track.id);
+      if (offlineTrack && offlineTrack.audioBlob) {
+        const url = URL.createObjectURL(offlineTrack.audioBlob);
+        objectUrlRef.current = url;
+        audioRef.current.src = url;
+      } else if (navigator.onLine) {
+        audioRef.current.src = getStreamUrl(track.id);
+      } else {
+        return;
+      }
+
+      // Seek to saved position once metadata is loaded
+      const handleLoaded = () => {
+        if (savedTime > 0 && savedTime < audioRef.current.duration) {
+          audioRef.current.currentTime = savedTime;
+          setCurrentTime(savedTime);
+        }
+        audioRef.current.removeEventListener('loadedmetadata', handleLoaded);
+      };
+      audioRef.current.addEventListener('loadedmetadata', handleLoaded);
+      // Trigger load but don't play
+      audioRef.current.load();
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist player state to localStorage (throttled via timeupdate already)
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    // Debounce saves to avoid hammering localStorage on every timeupdate
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      savePersistedState({
+        currentTrack,
+        queue,
+        queueIndex,
+        currentTime,
+        shuffle,
+        repeat,
+      });
+    }, 1000);
+  }, [currentTrack, queue, queueIndex, currentTime, shuffle, repeat]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      // Save final state before unmount
+      savePersistedState({
+        currentTrack: currentTrackRef.current,
+        queue: queueRef.current,
+        queueIndex: queueIndexRef.current,
+        currentTime: audioRef.current.currentTime,
+        shuffle: shuffleRef.current,
+        repeat: repeatRef.current,
+      });
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);
       }

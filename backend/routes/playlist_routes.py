@@ -200,6 +200,48 @@ def add_track_to_playlist(
     return playlist_to_response(playlist, include_tracks=True)
 
 
+@router.put("/{playlist_id}/reorder", response_model=schemas.PlaylistResponse)
+def reorder_playlist_tracks(
+    playlist_id: int,
+    data: schemas.PlaylistReorder,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    playlist = (
+        db.query(models.Playlist)
+        .filter(models.Playlist.id == playlist_id)
+        .first()
+    )
+    if not playlist:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    if playlist.created_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to modify this playlist",
+        )
+
+    # Build a map of track_id -> PlaylistTrack
+    pt_map = {
+        pt.track_id: pt for pt in playlist.playlist_tracks
+    }
+
+    # Validate all track_ids belong to this playlist
+    for tid in data.track_ids:
+        if tid not in pt_map:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Track {tid} is not in this playlist",
+            )
+
+    # Update positions based on the new order
+    for position, track_id in enumerate(data.track_ids):
+        pt_map[track_id].position = position
+
+    db.commit()
+    db.refresh(playlist)
+    return playlist_to_response(playlist, include_tracks=True)
+
+
 @router.delete("/{playlist_id}/tracks/{track_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_track_from_playlist(
     playlist_id: int,

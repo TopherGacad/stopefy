@@ -28,7 +28,6 @@ const Auth: React.FC<AuthProps> = ({ mode }) => {
     e.preventDefault();
     setError('');
 
-    // Validation
     if (!username.trim()) {
       setError('Username is required');
       return;
@@ -73,270 +72,85 @@ const Auth: React.FC<AuthProps> = ({ mode }) => {
   };
 
   return (
-    <div
-      className="auth"
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #1A1A1A 0%, #242424 40%, #1A1A1A 70%, #242424 100%)',
-        backgroundSize: '400% 400%',
-        animation: 'authGradientShift 15s ease infinite',
-        padding: '1rem',
-      }}
-    >
-      <style>{`
-        @keyframes authGradientShift {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-      `}</style>
-
-      <div
-        className="auth__card"
-        style={{
-          background: 'rgba(36, 36, 36, 0.95)',
-          backdropFilter: 'blur(16px)',
-          borderRadius: '1.25rem',
-          padding: '2.5rem 2rem',
-          width: '100%',
-          maxWidth: '420px',
-          border: '1px solid rgba(245, 229, 0, 0.15)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-        }}
-      >
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            <Music size={28} style={{ color: '#F5E500' }} />
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#FFFFFF', letterSpacing: '-0.02em' }}>
-              Stopefy
-            </span>
-          </div>
+    <div className="auth">
+      <div className="auth__card">
+        <div className="auth__logo">
+          <Music size={28} />
+          <span>Stopefy</span>
         </div>
 
-        {/* Title */}
-        <h1
-          className="auth__title"
-          style={{
-            color: '#FFFFFF',
-            fontSize: '1.5rem',
-            fontWeight: 700,
-            textAlign: 'center',
-            marginBottom: '1.75rem',
-          }}
-        >
+        <h1 className="auth__title">
           {mode === 'login' ? 'Welcome back' : 'Create an account'}
         </h1>
 
-        {/* Error */}
         {error && (
-          <div
-            className="auth__error"
-            style={{
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
-              borderRadius: '0.5rem',
-              padding: '0.75rem 1rem',
-              color: '#ef4444',
-              fontSize: '0.9rem',
-              marginBottom: '1.25rem',
-              textAlign: 'center',
-            }}
-          >
-            {error}
-          </div>
+          <div className="auth__error">{error}</div>
         )}
 
-        {/* Form */}
-        <form onSubmit={handleSubmit}>
-          {/* Username */}
-          <div style={{ marginBottom: '1.25rem' }}>
-            <label
-              style={{
-                display: 'block',
-                color: '#6B6B6B',
-                fontSize: '0.85rem',
-                marginBottom: '0.4rem',
-                fontWeight: 500,
-              }}
-            >
-              Username
-            </label>
+        <form className="auth__form" onSubmit={handleSubmit}>
+          <div className="auth__field">
+            <label className="auth__label">Username</label>
             <input
-              className="input"
+              className="auth__input"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Enter your username"
               required
-              style={{
-                width: '100%',
-                padding: '0.75rem 1rem',
-                background: '#2E2E2E',
-                border: '1px solid #363636',
-                borderRadius: '0.5rem',
-                color: '#FFFFFF',
-                fontSize: '1rem',
-                outline: 'none',
-                transition: 'border-color 0.2s',
-                boxSizing: 'border-box',
-              }}
-              onFocus={(e) => { e.target.style.borderColor = '#F5E500'; }}
-              onBlur={(e) => { e.target.style.borderColor = '#363636'; }}
             />
           </div>
 
-          {/* Email (register only) */}
           {mode === 'register' && (
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label
-                style={{
-                  display: 'block',
-                  color: '#6B6B6B',
-                  fontSize: '0.85rem',
-                  marginBottom: '0.4rem',
-                  fontWeight: 500,
-                }}
-              >
-                Email
-              </label>
+            <div className="auth__field">
+              <label className="auth__label">Email</label>
               <input
-                className="input"
+                className="auth__input"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email"
                 required
-                style={{
-                  width: '100%',
-                  padding: '0.75rem 1rem',
-                  background: '#2E2E2E',
-                  border: '1px solid #363636',
-                  borderRadius: '0.5rem',
-                  color: '#FFFFFF',
-                  fontSize: '1rem',
-                  outline: 'none',
-                  transition: 'border-color 0.2s',
-                  boxSizing: 'border-box',
-                }}
-                onFocus={(e) => { e.target.style.borderColor = '#F5E500'; }}
-                onBlur={(e) => { e.target.style.borderColor = '#363636'; }}
               />
             </div>
           )}
 
-          {/* Password */}
-          <div style={{ marginBottom: '1.25rem' }}>
-            <label
-              style={{
-                display: 'block',
-                color: '#6B6B6B',
-                fontSize: '0.85rem',
-                marginBottom: '0.4rem',
-                fontWeight: 500,
-              }}
-            >
-              Password
-            </label>
-            <div style={{ position: 'relative' }}>
+          <div className="auth__field">
+            <label className="auth__label">Password</label>
+            <div className="auth__input-wrapper">
               <input
-                className="input"
+                className="auth__input"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 required
-                style={{
-                  width: '100%',
-                  padding: '0.75rem 2.75rem 0.75rem 1rem',
-                  background: '#2E2E2E',
-                  border: '1px solid #363636',
-                  borderRadius: '0.5rem',
-                  color: '#FFFFFF',
-                  fontSize: '1rem',
-                  outline: 'none',
-                  transition: 'border-color 0.2s',
-                  boxSizing: 'border-box',
-                }}
-                onFocus={(e) => { e.target.style.borderColor = '#F5E500'; }}
-                onBlur={(e) => { e.target.style.borderColor = '#363636'; }}
               />
               <button
                 type="button"
+                className="auth__toggle-password"
                 onClick={() => setShowPassword(!showPassword)}
-                style={{
-                  position: 'absolute',
-                  right: '0.75rem',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'none',
-                  border: 'none',
-                  color: '#6B6B6B',
-                  cursor: 'pointer',
-                  padding: '0.25rem',
-                  display: 'flex',
-                }}
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
           </div>
 
-          {/* Confirm Password (register only) */}
           {mode === 'register' && (
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label
-                style={{
-                  display: 'block',
-                  color: '#6B6B6B',
-                  fontSize: '0.85rem',
-                  marginBottom: '0.4rem',
-                  fontWeight: 500,
-                }}
-              >
-                Confirm Password
-              </label>
-              <div style={{ position: 'relative' }}>
+            <div className="auth__field">
+              <label className="auth__label">Confirm Password</label>
+              <div className="auth__input-wrapper">
                 <input
-                  className="input"
+                  className="auth__input"
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm your password"
                   required
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 2.75rem 0.75rem 1rem',
-                    background: '#2E2E2E',
-                    border: '1px solid #363636',
-                    borderRadius: '0.5rem',
-                    color: '#FFFFFF',
-                    fontSize: '1rem',
-                    outline: 'none',
-                    transition: 'border-color 0.2s',
-                    boxSizing: 'border-box',
-                  }}
-                  onFocus={(e) => { e.target.style.borderColor = '#F5E500'; }}
-                  onBlur={(e) => { e.target.style.borderColor = '#363636'; }}
                 />
                 <button
                   type="button"
+                  className="auth__toggle-password"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  style={{
-                    position: 'absolute',
-                    right: '0.75rem',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    color: '#6B6B6B',
-                    cursor: 'pointer',
-                    padding: '0.25rem',
-                    display: 'flex',
-                  }}
                 >
                   {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
@@ -344,26 +158,10 @@ const Auth: React.FC<AuthProps> = ({ mode }) => {
             </div>
           )}
 
-          {/* Submit Button */}
           <button
             type="submit"
-            className="btn btn--primary btn--full"
+            className={`auth__submit${loading ? ' auth__submit--loading' : ''}`}
             disabled={loading}
-            style={{
-              width: '100%',
-              padding: '0.85rem',
-              background: loading
-                ? '#363636'
-                : 'linear-gradient(135deg, #F5E500, #d4c400)',
-              border: 'none',
-              borderRadius: '0.5rem',
-              color: '#1A1A1A',
-              fontSize: '1rem',
-              fontWeight: 600,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              transition: 'opacity 0.2s',
-              marginTop: '0.5rem',
-            }}
           >
             {loading
               ? (mode === 'login' ? 'Signing in...' : 'Creating account...')
@@ -371,21 +169,16 @@ const Auth: React.FC<AuthProps> = ({ mode }) => {
           </button>
         </form>
 
-        {/* Toggle Link */}
-        <p style={{ textAlign: 'center', marginTop: '1.5rem', color: '#6B6B6B', fontSize: '0.9rem' }}>
+        <p className="auth__switch">
           {mode === 'login' ? (
             <>
               Don&apos;t have an account?{' '}
-              <Link to="/register" style={{ color: '#F5E500', textDecoration: 'none', fontWeight: 600 }}>
-                Register
-              </Link>
+              <Link to="/register">Register</Link>
             </>
           ) : (
             <>
               Already have an account?{' '}
-              <Link to="/login" style={{ color: '#F5E500', textDecoration: 'none', fontWeight: 600 }}>
-                Login
-              </Link>
+              <Link to="/login">Login</Link>
             </>
           )}
         </p>

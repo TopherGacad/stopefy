@@ -50,7 +50,7 @@ export interface SearchResults {
 export interface WrappedData {
   year: number;
   total_minutes: number;
-  top_tracks: { track: Track; plays: number }[];
+  top_tracks: { id: number; title: string; artist: string; album: string; cover_art_url: string | null; plays: number }[];
   top_artists: { name: string; plays: number; minutes: number }[];
   top_genres: { genre: string; plays: number }[];
   total_tracks_played: number;
