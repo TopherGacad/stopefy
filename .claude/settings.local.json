@@ -16,7 +16,15 @@
       "Bash(cd \"C:/Users/USER/Desktop/stopefy/frontend\" && npx vite build 2>&1 | tail -10)",
       "Bash(python -c \"import shutil; print\\(shutil.which\\('ffmpeg'\\)\\)\")",
       "Bash(find \"C:\\\\Users\\\\USER\\\\Desktop\\\\stopefy\\\\frontend\\\\src\" -type f -name \"*.tsx\" -o -name \"*.ts\" -o -name \"*.css\" 2>/dev/null | head -50)",
-      "Bash(find /c/Users/USER/Desktop/stopefy/frontend/src -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.js\" -o -name \"*.jsx\" \\\\\\) 2>/dev/null | head -50)"
+      "Bash(find /c/Users/USER/Desktop/stopefy/frontend/src -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.js\" -o -name \"*.jsx\" \\\\\\) 2>/dev/null | head -50)",
+      "Bash(find /c/Users/USER/Desktop/stopefy/frontend/src -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))",
+      "Bash(grep -r \"Auth\\\\|login\\\\|register\" /c/Users/USER/Desktop/stopefy/frontend/src --include=*.tsx --include=*.ts -l)",
+      "Bash(find /c/Users/USER/Desktop/stopefy/backend -type f -name *.js -o -name *.ts -o -name *.json)",
+      "Bash(pip install:*)",
+      "Bash(ls:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "Bash(find /c/Users/USER/Desktop/stopefy/backend -type f -name *wrapped*)"
     ]
   }
 }

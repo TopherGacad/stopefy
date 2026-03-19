@@ -10,6 +10,7 @@ interface TrackListProps {
   showIndex?: boolean;
   showAlbum?: boolean;
   showArt?: boolean;
+  compact?: boolean;
   onPlay?: (track: Track, index: number) => void;
   onRemove?: (trackId: number) => void;
   playlist?: Track[];
@@ -27,6 +28,7 @@ const TrackList: React.FC<TrackListProps> = ({
   showIndex = true,
   showAlbum = true,
   showArt = true,
+  compact = false,
   onPlay,
   onRemove,
   playlist,
@@ -116,15 +118,19 @@ const TrackList: React.FC<TrackListProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             <AddToPlaylist track={track} size="sm" />
-            <button
-              className="btn btn--icon"
-              onClick={() => handleAddToQueue(track)}
-              title="Add to queue"
-              style={queuedIds.has(track.id) ? { color: '#1DB954' } : undefined}
-            >
-              {queuedIds.has(track.id) ? <Check size={16} /> : <Plus size={16} />}
-            </button>
-            <DownloadButton track={track} size="sm" />
+            {!compact && (
+              <>
+                <button
+                  className="btn btn--icon"
+                  onClick={() => handleAddToQueue(track)}
+                  title="Add to queue"
+                  style={queuedIds.has(track.id) ? { color: '#1DB954' } : undefined}
+                >
+                  {queuedIds.has(track.id) ? <Check size={16} /> : <Plus size={16} />}
+                </button>
+                <DownloadButton track={track} size="sm" />
+              </>
+            )}
             {onRemove && (
               <button
                 className="btn btn--icon"

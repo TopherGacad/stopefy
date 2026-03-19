@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../api';
 import { WrappedData } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 import { X, BarChart3, Sparkles } from 'lucide-react';
 
 const TOTAL_SLIDES = 6;
@@ -59,9 +60,11 @@ const Shapes: React.FC<{ color: string; slide: number }> = ({ color, slide }) =>
 
 const Wrapped: React.FC = () => {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const year = new Date().getFullYear();
   const [data, setData] = useState<WrappedData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notAvailable, setNotAvailable] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
   const touchStartX = useRef(0);
   const touchDeltaX = useRef(0);
@@ -72,7 +75,10 @@ const Wrapped: React.FC = () => {
       try {
         const result = await api.getWrapped(year);
         setData(result);
-      } catch {
+      } catch (err: any) {
+        if (err?.message?.includes('not available')) {
+          setNotAvailable(true);
+        }
         setData(null);
       } finally {
         setLoading(false);
@@ -175,6 +181,17 @@ const Wrapped: React.FC = () => {
           <div className="loading-spinner" />
           Loading your wrapped...
         </div>
+      </div>
+    );
+  }
+
+  if (notAvailable && !isAdmin) {
+    return portal(
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0D0D0D', textAlign: 'center', padding: '2rem' }}>
+        <CloseBtn />
+        <Sparkles size={64} style={{ color: '#F5E500', marginBottom: '1.5rem', opacity: 0.5 }} />
+        <p style={{ color: '#fff', fontSize: '1.3rem', marginBottom: 8 }}>Wrapped is not available yet</p>
+        <p style={{ color: '#6B6B6B', fontSize: '0.95rem' }}>Stay tuned — it will be revealed soon!</p>
       </div>
     );
   }

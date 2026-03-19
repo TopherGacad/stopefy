@@ -238,7 +238,7 @@ const Search: React.FC = () => {
           {results.tracks && results.tracks.length > 0 && (
             <div className="section">
               <h2 className="section__title">Tracks</h2>
-              <TrackList tracks={results.tracks} />
+              <TrackList tracks={results.tracks} compact />
             </div>
           )}
 

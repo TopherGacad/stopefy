@@ -6,7 +6,9 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<boolean>;
-  register: (username: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  register: (username: string, email: string, password: string) => Promise<{ success: boolean; email?: string; error?: string }>;
+  verifyOTP: (email: string, otp: string) => Promise<boolean>;
+  updateUser: (user: User) => void;
   logout: () => void;
   isAdmin: boolean;
 }
@@ -65,23 +67,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
-    try {
-      const res = await api.login(username, password);
-      setUser(res.user);
-      setCachedUser(res.user);
-      return true;
-    } catch {
-      return false;
-    }
+    const res = await api.login(username, password);
+    setUser(res.user);
+    setCachedUser(res.user);
+    return true;
   }, []);
 
   const register = useCallback(
     async (username: string, email: string, password: string) => {
       try {
         const res = await api.register(username, email, password);
-        setUser(res.user);
-        setCachedUser(res.user);
-        return { success: true };
+        return { success: true, email: res.email };
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'Registration failed';
         return { success: false, error: message };
@@ -89,6 +85,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     []
   );
+
+  const verifyOTP = useCallback(async (email: string, otp: string) => {
+    const res = await api.verifyOTP(email, otp);
+    setUser(res.user);
+    setCachedUser(res.user);
+    return true;
+  }, []);
+
+  const updateUser = useCallback((updatedUser: User) => {
+    setUser(updatedUser);
+    setCachedUser(updatedUser);
+  }, []);
 
   const logout = useCallback(() => {
     api.logout();
@@ -98,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, logout, isAdmin: user?.is_admin ?? false }}
+      value={{ user, loading, login, register, verifyOTP, updateUser, logout, isAdmin: user?.is_admin ?? false }}
     >
       {children}
     </AuthContext.Provider>

@@ -32,7 +32,7 @@ function getGreeting(): string {
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const player = usePlayer();
 
   const [popularTracks, setPopularTracks] = useState<Track[]>([]);
@@ -40,15 +40,17 @@ const Home: React.FC = () => {
   const [suggested, setSuggested] = useState<Track[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
+  const [wrappedEnabled, setWrappedEnabled] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [popularRes, recentRes, suggestedRes, playlistRes] = await Promise.allSettled([
+        const [popularRes, recentRes, suggestedRes, playlistRes, wrappedRes] = await Promise.allSettled([
           api.getTracks({ limit: 5, sort: 'most_played' }),
           api.getTracks({ limit: 3 }),
           api.getSuggestedTracks(6),
           api.getPlaylists(),
+          api.isWrappedEnabled(),
         ]);
         if (popularRes.status === 'fulfilled') {
           const v = popularRes.value;
@@ -63,6 +65,9 @@ const Home: React.FC = () => {
         }
         if (playlistRes.status === 'fulfilled') {
           setPlaylists(Array.isArray(playlistRes.value) ? playlistRes.value : []);
+        }
+        if (wrappedRes.status === 'fulfilled') {
+          setWrappedEnabled(wrappedRes.value);
         }
       } catch (err) {
         console.error('Failed to fetch home data:', err);
@@ -166,14 +171,16 @@ const Home: React.FC = () => {
         </button>
       </div>
 
-      <div className="wrapped-banner" onClick={() => navigate('/wrapped')}>
-        <Sparkles size={20} />
-        <div className="wrapped-banner__text">
-          <span className="wrapped-banner__title">Your {new Date().getFullYear()} Wrapped</span>
-          <span className="wrapped-banner__subtitle">See your listening stats</span>
+      {(wrappedEnabled || isAdmin) && (
+        <div className="wrapped-banner" onClick={() => navigate('/wrapped')}>
+          <Sparkles size={20} />
+          <div className="wrapped-banner__text">
+            <span className="wrapped-banner__title">Your {new Date().getFullYear()} Wrapped</span>
+            <span className="wrapped-banner__subtitle">See your listening stats</span>
+          </div>
+          <ChevronRight size={20} />
         </div>
-        <ChevronRight size={20} />
-      </div>
+      )}
 
       {loading ? (
         <div className="home__loading" style={{ color: '#6B6B6B', textAlign: 'center', padding: '3rem' }}>
@@ -183,9 +190,49 @@ const Home: React.FC = () => {
         <>
           {playlists.length > 0 && (
             <div className="section section--playlists">
-              <h2 className="section__title">Your Playlists</h2>
-              <div className="scroll-row">
-                {playlists.map(renderPlaylistCard)}
+              <div className="section__header">
+                <h2 className="section__title">Your Playlists</h2>
+                {playlists.length > 8 && (
+                  <button className="section__see-all" onClick={() => navigate('/library')}>
+                    See all
+                  </button>
+                )}
+              </div>
+              <div className="home__playlist-grid">
+                {playlists.slice(0, 8).map((playlist) => {
+                  const covers = (playlist.tracks || [])
+                    .map((t) => t.cover_art_url)
+                    .filter((url): url is string => !!url)
+                    .filter((url, i, arr) => arr.indexOf(url) === i)
+                    .slice(0, 4);
+
+                  return (
+                    <div
+                      key={playlist.id}
+                      className="home__playlist-item"
+                      onClick={() => navigate(`/playlist/${playlist.id}`)}
+                    >
+                      <div className="home__playlist-art">
+                        {playlist.cover_image ? (
+                          <img src={playlist.cover_image} alt={playlist.name} />
+                        ) : covers.length >= 4 ? (
+                          <div className="home__playlist-mosaic">
+                            {covers.map((url, i) => (
+                              <img key={i} src={url} alt="" />
+                            ))}
+                          </div>
+                        ) : covers.length > 0 ? (
+                          <img src={covers[0]} alt={playlist.name} />
+                        ) : (
+                          <div className="home__playlist-art-placeholder">
+                            <span>&#9835;</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="home__playlist-name">{playlist.name}</div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

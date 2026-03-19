@@ -12,12 +12,28 @@ import schemas
 router = APIRouter(prefix="/api/wrapped", tags=["wrapped"])
 
 
+@router.get("/enabled")
+def wrapped_enabled(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    setting = db.query(models.AppSettings).filter(models.AppSettings.key == "wrapped_enabled").first()
+    enabled = setting.value == "true" if setting else False
+    return {"enabled": enabled}
+
+
 @router.get("/{year}", response_model=schemas.WrappedResponse)
 def get_wrapped(
     year: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    # Check if wrapped is enabled (admins can always access)
+    if not current_user.is_admin:
+        setting = db.query(models.AppSettings).filter(models.AppSettings.key == "wrapped_enabled").first()
+        if not setting or setting.value != "true":
+            raise HTTPException(status_code=403, detail="Wrapped is not available yet")
+
     start_date = datetime(year, 1, 1)
     end_date = datetime(year, 12, 31, 23, 59, 59)
 

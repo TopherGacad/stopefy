@@ -12,6 +12,7 @@ import Auth from './pages/Auth';
 import Admin from './pages/Admin';
 import SettingsPage from './pages/Settings';
 import NowPlaying from './pages/NowPlaying';
+import EditProfile from './pages/EditProfile';
 import { ToastProvider } from './components/Toast';
 import './App.css';
 
@@ -63,6 +64,7 @@ export default function App() {
               <Route path="/wrapped" element={<Wrapped />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/edit-profile" element={<EditProfile />} />
               <Route path="/now-playing" element={<NowPlaying />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

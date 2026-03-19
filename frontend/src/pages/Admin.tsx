@@ -17,6 +17,7 @@ import {
   ChevronRight,
   CheckSquare,
   Square,
+  Sparkles,
 } from 'lucide-react';
 
 interface Stats {
@@ -95,6 +96,7 @@ const Admin: React.FC = () => {
   const [editValues, setEditValues] = useState<{ title: string; artist: string; genre: string }>({ title: '', artist: '', genre: '' });
   const [compressing, setCompressing] = useState(false);
   const [compressMsg, setCompressMsg] = useState('');
+  const [wrappedEnabled, setWrappedEnabled] = useState(false);
 
   const TRACKS_PER_PAGE = 20;
 
@@ -136,14 +138,33 @@ const Admin: React.FC = () => {
     }
   }, []);
 
+  const fetchSettings = useCallback(async () => {
+    try {
+      const data = await api.adminGetSettings();
+      setWrappedEnabled(data.wrapped_enabled === 'true');
+    } catch (err) {
+      console.error('Failed to fetch settings:', err);
+    }
+  }, []);
+
+  const handleToggleWrapped = async () => {
+    const newValue = !wrappedEnabled;
+    setWrappedEnabled(newValue);
+    try {
+      await api.adminUpdateSettings({ wrapped_enabled: String(newValue) });
+    } catch {
+      setWrappedEnabled(!newValue);
+    }
+  };
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchStats(), fetchUsers(), fetchTracks()]);
+      await Promise.all([fetchStats(), fetchUsers(), fetchTracks(), fetchSettings()]);
       setLoading(false);
     };
     loadData();
-  }, [fetchStats, fetchUsers, fetchTracks]);
+  }, [fetchStats, fetchUsers, fetchTracks, fetchSettings]);
 
   const handleDeleteTrack = async (trackId: number) => {
     setDeleting(trackId);
@@ -367,6 +388,25 @@ const Admin: React.FC = () => {
               )}
             </button>
             {compressMsg && <div className="admin__compress-msg">{compressMsg}</div>}
+          </div>
+
+          <div className="admin__toggle-card">
+            <div className="admin__toggle-info">
+              <div className="admin__toggle-title">
+                <Sparkles size={18} /> Wrapped {new Date().getFullYear()}
+              </div>
+              <div className="admin__toggle-subtitle">
+                {wrappedEnabled
+                  ? 'Users can view their yearly Wrapped stats'
+                  : 'Wrapped is hidden from users'}
+              </div>
+            </div>
+            <button
+              className={`admin__toggle-switch ${wrappedEnabled ? 'admin__toggle-switch--on' : ''}`}
+              onClick={handleToggleWrapped}
+            >
+              <div className="admin__toggle-knob" />
+            </button>
           </div>
         </div>
       )}
@@ -615,7 +655,7 @@ const Admin: React.FC = () => {
               {confirmDelete.type === 'bulk'
                 ? `Are you sure you want to delete ${selectedTracks.size} selected tracks? This will remove the audio files permanently.`
                 : confirmDelete.type === 'user'
-                  ? 'Are you sure you want to delete this user? All their uploaded tracks will also be deleted permanently.'
+                  ? 'Are you sure you want to delete this user? Their playlists and listening history will be removed, but their uploaded music will remain in the app.'
                   : 'Are you sure you want to delete this track? The audio file will be removed permanently.'}
             </p>
             <div className="admin__modal-actions">

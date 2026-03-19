@@ -94,11 +94,36 @@ export async function register(
   username: string,
   email: string,
   password: string
-): Promise<{ user: User; access_token: string; refresh_token: string }> {
+): Promise<{ message: string; email: string }> {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, email, password }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    let message: string;
+    try {
+      const json = JSON.parse(text);
+      message = json.detail || json.message || text;
+    } catch {
+      message = text;
+    }
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+export async function verifyOTP(
+  email: string,
+  otp: string
+): Promise<{ user: User; access_token: string; refresh_token: string }> {
+  const res = await fetch(`${API_BASE}/auth/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, otp }),
   });
 
   if (!res.ok) {
@@ -143,6 +168,23 @@ export async function login(
   const data = await res.json();
   setTokens(data.access_token, data.refresh_token);
   return data;
+}
+
+export async function updateProfile(data: { username?: string; email?: string }): Promise<User> {
+  const res = await fetchWithAuth(`${API_BASE}/auth/me`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await fetchWithAuth(`${API_BASE}/auth/me/change-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
 }
 
 export async function refreshToken(): Promise<{ access_token: string; refresh_token: string }> {
@@ -452,4 +494,24 @@ export async function adminDeleteUser(userId: number): Promise<void> {
 export async function adminCompressAll(): Promise<{ compressed: number; total: number; saved_mb: number; message: string }> {
   const res = await fetchWithAuth(`${API_BASE}/admin/compress-all`, { method: 'POST' });
   return res.json();
+}
+
+export async function adminGetSettings(): Promise<Record<string, string>> {
+  const res = await fetchWithAuth(`${API_BASE}/admin/settings`);
+  return res.json();
+}
+
+export async function adminUpdateSettings(settings: Record<string, string>): Promise<Record<string, string>> {
+  const res = await fetchWithAuth(`${API_BASE}/admin/settings`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  return res.json();
+}
+
+export async function isWrappedEnabled(): Promise<boolean> {
+  const res = await fetchWithAuth(`${API_BASE}/wrapped/enabled`);
+  const data = await res.json();
+  return data.enabled;
 }

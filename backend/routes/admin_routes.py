@@ -1,4 +1,5 @@
 import os
+import traceback
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -204,17 +205,30 @@ def admin_delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Delete user's tracks from disk
-    tracks = db.query(models.Track).filter(models.Track.uploaded_by == user_id).all()
-    for track in tracks:
-        if track.file_path and os.path.isfile(track.file_path):
-            os.remove(track.file_path)
-        if track.cover_art_path and os.path.isfile(track.cover_art_path):
-            os.remove(track.cover_art_path)
-        db.delete(track)
+    try:
+        # Reassign uploaded tracks to admin so music stays in the app
+        db.query(models.Track).filter(models.Track.uploaded_by == user_id).update(
+            {"uploaded_by": admin.id}, synchronize_session="fetch"
+        )
 
-    db.delete(user)
-    db.commit()
+        # Delete playlist-track entries for user's playlists, then playlists
+        playlist_ids = [p.id for p in db.query(models.Playlist.id).filter(models.Playlist.created_by == user_id).all()]
+        if playlist_ids:
+            db.query(models.PlaylistTrack).filter(models.PlaylistTrack.playlist_id.in_(playlist_ids)).delete(synchronize_session="fetch")
+            db.query(models.Playlist).filter(models.Playlist.id.in_(playlist_ids)).delete(synchronize_session="fetch")
+
+        # Delete user's listening history
+        db.query(models.ListeningHistory).filter(models.ListeningHistory.user_id == user_id).delete(synchronize_session="fetch")
+
+        # Expire cached relationships so ORM sees the changes
+        db.expire(user)
+        db.delete(user)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
     return None
 
 
@@ -243,16 +257,17 @@ def compress_all_tracks(
         new_path = _compress_audio(track.file_path, settings.AUDIO_BITRATE)
 
         if new_path and new_path != track.file_path:
-            new_size = os.path.getsize(new_path)
-            # Only keep compressed version if it's actually smaller
-            if new_size < old_size:
+            new_size = os.path.getsize(new_path) if os.path.isfile(new_path) else 0
+            # Only keep compressed version if it's valid and smaller
+            if new_size > 1000 and new_size < old_size:
                 os.remove(track.file_path)
                 track.file_path = new_path
                 track.file_size = new_size
                 saved_bytes += old_size - new_size
                 compressed += 1
             else:
-                os.remove(new_path)
+                if os.path.isfile(new_path):
+                    os.remove(new_path)
 
     if compressed > 0:
         db.commit()
@@ -264,3 +279,37 @@ def compress_all_tracks(
         "saved_mb": saved_mb,
         "message": f"Compressed {compressed} tracks, saved {saved_mb} MB",
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/admin/settings
+# ---------------------------------------------------------------------------
+
+@router.get("/settings")
+def get_app_settings(
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(require_admin),
+):
+    settings_rows = db.query(models.AppSettings).all()
+    return {s.key: s.value for s in settings_rows}
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/admin/settings
+# ---------------------------------------------------------------------------
+
+@router.patch("/settings")
+def update_app_settings(
+    body: dict,
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(require_admin),
+):
+    for key, value in body.items():
+        row = db.query(models.AppSettings).filter(models.AppSettings.key == key).first()
+        if row:
+            row.value = str(value)
+        else:
+            db.add(models.AppSettings(key=key, value=str(value)))
+    db.commit()
+    settings_rows = db.query(models.AppSettings).all()
+    return {s.key: s.value for s in settings_rows}

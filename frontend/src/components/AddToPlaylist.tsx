@@ -136,6 +136,7 @@ const AddToPlaylist: React.FC<AddToPlaylistProps> = ({ track, size = 'sm' }) => 
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
                 style={{
                   flex: 1,
+                  minWidth: 0,
                   padding: '0.6rem 0.75rem',
                   background: '#2E2E2E',
                   border: '1px solid #363636',
@@ -143,13 +144,14 @@ const AddToPlaylist: React.FC<AddToPlaylistProps> = ({ track, size = 'sm' }) => 
                   color: '#FFFFFF',
                   fontSize: '0.9rem',
                   outline: 'none',
+                  boxSizing: 'border-box',
                 }}
               />
               <button
                 onClick={handleCreate}
                 disabled={creating || !newName.trim()}
                 style={{
-                  padding: '0.6rem 0.75rem',
+                  padding: '0.6rem 1rem',
                   background: '#F5E500',
                   border: 'none',
                   borderRadius: '0.5rem',
@@ -161,6 +163,8 @@ const AddToPlaylist: React.FC<AddToPlaylistProps> = ({ track, size = 'sm' }) => 
                   fontWeight: 600,
                   fontSize: '0.85rem',
                   opacity: !newName.trim() ? 0.5 : 1,
+                  flexShrink: 0,
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {creating ? <Loader size={14} className="spin" /> : <Plus size={14} />}

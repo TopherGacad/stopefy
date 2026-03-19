@@ -1,7 +1,52 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Music, Eye, EyeOff } from 'lucide-react';
+import { useToast } from '../components/Toast';
+import { Eye, EyeOff } from 'lucide-react';
+
+function friendlyError(raw: string): string {
+  const msg = (raw || '').toLowerCase();
+
+  // Network / connectivity
+  if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('network error'))
+    return 'Unable to connect to the server. Please check your internet connection.';
+  if (msg.includes('you may be offline'))
+    return 'You appear to be offline. Please check your connection and try again.';
+  if (msg.includes('timeout') || msg.includes('timed out'))
+    return 'The server took too long to respond. Please try again.';
+
+  // Auth
+  if (msg.includes('invalid username or password'))
+    return 'Incorrect username or password. Please try again.';
+  if (msg.includes('username already taken'))
+    return 'This username is already taken. Please choose a different one.';
+  if (msg.includes('email already registered'))
+    return 'This email is already registered. Try logging in instead.';
+  if (msg.includes('authentication failed') || msg.includes('invalid or expired token'))
+    return 'Your session has expired. Please log in again.';
+
+  // OTP
+  if (msg.includes('invalid verification code'))
+    return 'The code you entered is incorrect. Please check and try again.';
+  if (msg.includes('expired'))
+    return 'Your verification code has expired. Please register again to get a new code.';
+  if (msg.includes('no pending registration'))
+    return 'No verification in progress. Please register again.';
+
+  // Email
+  if (msg.includes('failed to send verification email') || msg.includes('failed to send'))
+    return 'We couldn\'t send the verification email. Please try again in a moment.';
+
+  // Server errors
+  if (msg.includes('500') || msg.includes('internal server error'))
+    return 'Something went wrong on our end. Please try again later.';
+
+  // If the message is already readable (no weird codes/stack traces), return it
+  if (raw.length < 100 && !msg.includes('traceback') && !msg.includes('error:'))
+    return raw;
+
+  return 'Something went wrong. Please try again.';
+}
 
 interface AuthProps {
   mode: 'login' | 'register';
@@ -10,6 +55,7 @@ interface AuthProps {
 const Auth: React.FC<AuthProps> = ({ mode }) => {
   const navigate = useNavigate();
   const auth = useAuth();
+  const { showToast } = useToast();
 
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -17,41 +63,75 @@ const Auth: React.FC<AuthProps> = ({ mode }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // OTP state
+  const [otpStep, setOtpStep] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const validateEmail = (email: string): boolean => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
+  const handleOtpChange = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const newOtp = [...otp];
+    newOtp[index] = value.slice(-1);
+    setOtp(newOtp);
+
+    if (value && index < 5) {
+      otpRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (pasted.length === 0) return;
+    const newOtp = [...otp];
+    for (let i = 0; i < 6; i++) {
+      newOtp[i] = pasted[i] || '';
+    }
+    setOtp(newOtp);
+    const focusIndex = Math.min(pasted.length, 5);
+    otpRefs.current[focusIndex]?.focus();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
 
     if (!username.trim()) {
-      setError('Username is required');
+      showToast('Username is required', 'error');
       return;
     }
     if (!password) {
-      setError('Password is required');
+      showToast('Password is required', 'error');
       return;
     }
 
     if (mode === 'register') {
       if (!email.trim()) {
-        setError('Email is required');
+        showToast('Email is required', 'error');
         return;
       }
       if (!validateEmail(email)) {
-        setError('Please enter a valid email address');
+        showToast('Please enter a valid email address', 'error');
         return;
       }
       if (password !== confirmPassword) {
-        setError('Passwords do not match');
+        showToast('Passwords do not match', 'error');
         return;
       }
       if (password.length < 6) {
-        setError('Password must be at least 6 characters');
+        showToast('Password must be at least 6 characters', 'error');
         return;
       }
     }
@@ -60,32 +140,120 @@ const Auth: React.FC<AuthProps> = ({ mode }) => {
     try {
       if (mode === 'login') {
         await auth.login(username, password);
+        navigate('/');
       } else {
-        await auth.register(username, email, password);
+        const res = await auth.register(username, email, password);
+        if (res.success && res.email) {
+          setPendingEmail(res.email);
+          setOtpStep(true);
+          showToast('Verification code sent to your email', 'success');
+        } else {
+          showToast(friendlyError(res.error || ''), 'error');
+        }
       }
-      navigate('/');
     } catch (err: any) {
-      setError(err?.message || `${mode === 'login' ? 'Login' : 'Registration'} failed. Please try again.`);
+      showToast(friendlyError(err?.message), 'error');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = otp.join('');
+
+    if (code.length !== 6) {
+      showToast('Please enter the 6-digit code', 'error');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await auth.verifyOTP(pendingEmail, code);
+      showToast('Account created successfully!', 'success');
+      navigate('/');
+    } catch (err: any) {
+      showToast(friendlyError(err?.message), 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // OTP verification screen
+  if (otpStep) {
+    return (
+      <div className="auth">
+        <div className="auth__card">
+          <div className="auth__logo">
+            <img src="/web/icon-192.png" alt="Stopefy" className="auth__logo-icon" />
+          </div>
+
+          <h1 className="auth__title">Verify your email</h1>
+          <p className="auth__subtitle">
+            We sent a 6-digit code to <strong>{pendingEmail}</strong>
+          </p>
+
+          <form className="auth__form" onSubmit={handleVerifyOtp}>
+            <div className="auth__otp-container">
+              {otp.map((digit, i) => (
+                <input
+                  key={i}
+                  ref={(el) => { otpRefs.current[i] = el; }}
+                  className="auth__otp-input"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleOtpChange(i, e.target.value)}
+                  onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                  onPaste={i === 0 ? handleOtpPaste : undefined}
+                  autoFocus={i === 0}
+                />
+              ))}
+            </div>
+
+            <button
+              type="submit"
+              className={`auth__submit${loading ? ' auth__submit--loading' : ''}`}
+              disabled={loading}
+            >
+              {loading ? 'Verifying...' : 'Verify & Create Account'}
+            </button>
+          </form>
+
+          <p className="auth__switch">
+            Didn&apos;t receive the code?{' '}
+            <button
+              type="button"
+              className="auth__resend"
+              onClick={() => {
+                setOtpStep(false);
+                setOtp(['', '', '', '', '', '']);
+              }}
+            >
+              Go back
+            </button>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="auth">
       <div className="auth__card">
         <div className="auth__logo">
-          <Music size={28} />
-          <span>Stopefy</span>
+          <img src="/web/icon-192.png" alt="Stopefy" className="auth__logo-icon" />
         </div>
 
         <h1 className="auth__title">
           {mode === 'login' ? 'Welcome back' : 'Create an account'}
         </h1>
-
-        {error && (
-          <div className="auth__error">{error}</div>
-        )}
+        <p className="auth__subtitle">
+          {mode === 'login'
+            ? 'Sign in to continue listening'
+            : 'Join Stopefy today'}
+        </p>
 
         <form className="auth__form" onSubmit={handleSubmit}>
           <div className="auth__field">

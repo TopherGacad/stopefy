@@ -38,6 +38,26 @@ class TokenResponse(BaseModel):
     user: UserResponse
 
 
+class RegisterResponse(BaseModel):
+    message: str
+    email: str
+
+
+class VerifyOTPRequest(BaseModel):
+    email: str
+    otp: str
+
+
+class UpdateProfileRequest(BaseModel):
+    username: Optional[str] = None
+    email: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
 

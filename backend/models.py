@@ -94,6 +94,26 @@ class PlaylistTrack(Base):
     )
 
 
+class AppSettings(Base):
+    __tablename__ = "app_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String, unique=True, nullable=False, index=True)
+    value = Column(String, nullable=False)
+
+
+class PendingRegistration(Base):
+    __tablename__ = "pending_registrations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, nullable=False)
+    email = Column(String, nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    otp_code = Column(String, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class ListeningHistory(Base):
     __tablename__ = "listening_history"
 
