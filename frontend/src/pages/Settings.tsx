@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { LogOut, Shield, User, ChevronRight, Pencil, Heart, Copy, HelpCircle } from 'lucide-react';
+import { usePlayer } from '../contexts/PlayerContext';
+import { LogOut, Shield, User, ChevronRight, Pencil, Heart, Copy, HelpCircle, Music } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
 const Settings: React.FC = () => {
   const { user, logout, isAdmin } = useAuth();
+  const { crossfadeDuration, setCrossfadeDuration } = usePlayer();
   const navigate = useNavigate();
   const { showToast } = useToast();
 
@@ -69,6 +71,32 @@ const Settings: React.FC = () => {
             <ChevronRight size={18} className="settings__item-chevron" />
           </div>
         )}
+      </div>
+
+      <div className="settings__section">
+        <div className="settings__item">
+          <div className="settings__item-icon">
+            <Music size={20} />
+          </div>
+          <div className="settings__item-content" style={{ flex: 1 }}>
+            <div className="settings__item-label">Crossfade</div>
+            <div className="settings__item-value">
+              {crossfadeDuration === 0 ? 'Off' : `${crossfadeDuration}s`}
+            </div>
+            <input
+              type="range"
+              className="settings__slider"
+              min="0"
+              max="12"
+              step="1"
+              value={crossfadeDuration}
+              onChange={(e) => setCrossfadeDuration(parseInt(e.target.value))}
+              style={{
+                background: `linear-gradient(to right, #F5E500 0%, #F5E500 ${(crossfadeDuration / 12) * 100}%, #363636 ${(crossfadeDuration / 12) * 100}%, #363636 100%)`,
+              }}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="settings__section">

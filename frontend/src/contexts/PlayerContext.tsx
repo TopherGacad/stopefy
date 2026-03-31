@@ -22,6 +22,7 @@ interface PlayerContextType {
   volume: number;
   shuffle: boolean;
   repeat: RepeatMode;
+  crossfadeDuration: number;
   play: (track: Track, playlist?: Track[]) => void;
   pause: () => void;
   resume: () => void;
@@ -32,6 +33,7 @@ interface PlayerContextType {
   setVolume: (vol: number) => void;
   toggleShuffle: () => void;
   cycleRepeat: () => void;
+  setCrossfadeDuration: (seconds: number) => void;
   addToQueue: (track: Track) => void;
   removeFromQueue: (index: number) => void;
   reorderQueue: (fromIndex: number, toIndex: number) => void;
@@ -42,6 +44,8 @@ const PlayerContext = createContext<PlayerContextType>(null!);
 export const usePlayer = () => useContext(PlayerContext);
 
 const STORAGE_KEY = 'stopefy-player';
+const CROSSFADE_KEY = 'stopefy-crossfade';
+const FADE_INTERVAL_MS = 50;
 
 interface PersistedState {
   currentTrack: Track | null;
@@ -70,10 +74,28 @@ function savePersistedState(state: PersistedState) {
   }
 }
 
+function loadCrossfadeDuration(): number {
+  try {
+    const raw = localStorage.getItem(CROSSFADE_KEY);
+    return raw ? parseFloat(raw) : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
-  const audioRef = useRef<HTMLAudioElement>(new Audio());
-  const objectUrlRef = useRef<string | null>(null);
+  // Two audio elements that alternate roles
+  const audioARef = useRef<HTMLAudioElement>(new Audio());
+  const audioBRef = useRef<HTMLAudioElement>(new Audio());
+  const activeAudioId = useRef<'A' | 'B'>('A');
+  const objectUrlARef = useRef<string | null>(null);
+  const objectUrlBRef = useRef<string | null>(null);
   const restoredRef = useRef(false);
+
+  const getActiveAudio = () => activeAudioId.current === 'A' ? audioARef.current : audioBRef.current;
+  const getInactiveAudio = () => activeAudioId.current === 'A' ? audioBRef.current : audioARef.current;
+  const getActiveObjectUrlRef = () => activeAudioId.current === 'A' ? objectUrlARef : objectUrlBRef;
+  const getInactiveObjectUrlRef = () => activeAudioId.current === 'A' ? objectUrlBRef : objectUrlARef;
 
   // Restore persisted state on first mount
   const persisted = useRef(loadPersistedState()).current;
@@ -86,6 +108,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [duration, setDuration] = useState(0);
   const [shuffle, setShuffle] = useState(persisted?.shuffle ?? false);
   const [repeat, setRepeat] = useState<RepeatMode>(persisted?.repeat ?? 'none');
+  const [crossfadeDuration, setCrossfadeDurationState] = useState(loadCrossfadeDuration);
 
   // Initialize volume from localStorage
   const [volume, setVolumeState] = useState(() => {
@@ -99,95 +122,182 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const shuffleRef = useRef(shuffle);
   const repeatRef = useRef(repeat);
   const currentTrackRef = useRef(currentTrack);
+  const volumeRef = useRef(volume);
+  const crossfadeDurationRef = useRef(crossfadeDuration);
+
+  // Shuffled order: an array of queue indices in shuffled order, and our position within it
+  const shuffledOrderRef = useRef<number[]>([]);
+  const shuffledPosRef = useRef(-1);
+
+  // Crossfade state
+  const xfadingRef = useRef(false);
+  const xfadeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => { queueRef.current = queue; }, [queue]);
   useEffect(() => { queueIndexRef.current = queueIndex; }, [queueIndex]);
   useEffect(() => { shuffleRef.current = shuffle; }, [shuffle]);
   useEffect(() => { repeatRef.current = repeat; }, [repeat]);
   useEffect(() => { currentTrackRef.current = currentTrack; }, [currentTrack]);
+  useEffect(() => { volumeRef.current = volume; }, [volume]);
+  useEffect(() => { crossfadeDurationRef.current = crossfadeDuration; }, [crossfadeDuration]);
 
-  // Set audio volume on init and changes
+  // Set active audio volume on init and changes (only when not crossfading)
   useEffect(() => {
-    audioRef.current.volume = volume;
+    if (!xfadingRef.current) {
+      getActiveAudio().volume = volume;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [volume]);
 
-  // ----- Core helpers (use refs to always read latest state) -----
+  // ----- Shuffle helpers -----
+
+  const buildShuffledOrder = useCallback((queueLength: number, currentIdx: number) => {
+    const indices = Array.from({ length: queueLength }, (_, i) => i);
+    const filtered = indices.filter((i) => i !== currentIdx);
+    for (let i = filtered.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+    }
+    shuffledOrderRef.current = [currentIdx, ...filtered];
+    shuffledPosRef.current = 0;
+  }, []);
+
+  useEffect(() => {
+    if (shuffle && queue.length > 0) {
+      buildShuffledOrder(queue.length, queueIndex);
+    } else {
+      shuffledOrderRef.current = [];
+      shuffledPosRef.current = -1;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shuffle, queue.length]);
+
+  // ----- Core helpers -----
 
   const getNextIndex = useCallback((): number => {
     const q = queueRef.current;
-    const idx = queueIndexRef.current;
     const shuf = shuffleRef.current;
     const rep = repeatRef.current;
 
     if (q.length === 0) return -1;
 
     if (shuf) {
-      if (q.length === 1) return rep === 'none' ? -1 : 0;
-      let next: number;
-      do {
-        next = Math.floor(Math.random() * q.length);
-      } while (next === idx);
-      return next;
+      const order = shuffledOrderRef.current;
+      const pos = shuffledPosRef.current;
+      if (order.length === 0) return -1;
+
+      const nextPos = pos + 1;
+      if (nextPos < order.length) {
+        shuffledPosRef.current = nextPos;
+        return order[nextPos];
+      }
+      if (rep === 'all') {
+        buildShuffledOrder(q.length, order[pos]);
+        shuffledPosRef.current = 1;
+        return shuffledOrderRef.current[1] ?? order[pos];
+      }
+      return -1;
     }
 
+    const idx = queueIndexRef.current;
     const next = idx + 1;
     if (next < q.length) return next;
     if (rep === 'all') return 0;
     return -1;
-  }, []);
+  }, [buildShuffledOrder]);
 
   const getPrevIndex = useCallback((): number => {
     const q = queueRef.current;
-    const idx = queueIndexRef.current;
     const shuf = shuffleRef.current;
     const rep = repeatRef.current;
 
     if (q.length === 0) return -1;
 
     if (shuf) {
-      let prev: number;
-      do {
-        prev = Math.floor(Math.random() * q.length);
-      } while (prev === idx && q.length > 1);
-      return prev;
+      const order = shuffledOrderRef.current;
+      const pos = shuffledPosRef.current;
+      if (order.length === 0) return -1;
+
+      const prevPos = pos - 1;
+      if (prevPos >= 0) {
+        shuffledPosRef.current = prevPos;
+        return order[prevPos];
+      }
+      if (rep === 'all') {
+        shuffledPosRef.current = order.length - 1;
+        return order[order.length - 1];
+      }
+      return order[0];
     }
 
+    const idx = queueIndexRef.current;
     const prev = idx - 1;
     if (prev >= 0) return prev;
     if (rep === 'all') return q.length - 1;
     return 0;
   }, []);
 
-  const loadAndPlay = useCallback(async (track: Track) => {
-    // Clean up previous object URL
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
+  // Cancel any in-progress crossfade
+  const cancelCrossfade = useCallback(() => {
+    if (xfadeTimerRef.current) {
+      clearInterval(xfadeTimerRef.current);
+      xfadeTimerRef.current = null;
+    }
+    xfadingRef.current = false;
+    // Stop the inactive audio (the one fading out)
+    const inactive = getInactiveAudio();
+    inactive.pause();
+    inactive.removeAttribute('src');
+    inactive.load();
+    // Clean up its object URL
+    const urlRef = getInactiveObjectUrlRef();
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const loadAudioSource = useCallback(async (audio: HTMLAudioElement, track: Track, urlRef: React.MutableRefObject<string | null>) => {
+    // Clean up previous object URL for this audio
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
     }
 
-    // Check if track is available offline
     const offlineTrack = await getOfflineTrack(track.id);
     if (offlineTrack && offlineTrack.audioBlob) {
       const url = URL.createObjectURL(offlineTrack.audioBlob);
-      objectUrlRef.current = url;
-      audioRef.current.src = url;
+      urlRef.current = url;
+      audio.src = url;
     } else if (navigator.onLine) {
-      audioRef.current.src = getStreamUrl(track.id);
+      audio.src = getStreamUrl(track.id);
     } else {
+      return false;
+    }
+    return true;
+  }, []);
+
+  const loadAndPlay = useCallback(async (track: Track) => {
+    const audio = getActiveAudio();
+    const urlRef = getActiveObjectUrlRef();
+    const loaded = await loadAudioSource(audio, track, urlRef);
+    if (!loaded) {
       console.warn('Track not available offline:', track.title);
       return false;
     }
 
     try {
-      await audioRef.current.play();
+      audio.volume = volumeRef.current;
+      await audio.play();
       setIsPlaying(true);
       return true;
     } catch {
-      // Autoplay might be blocked
       setIsPlaying(false);
       return false;
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadAudioSource]);
 
   const playByIndex = useCallback(
     async (index: number) => {
@@ -200,7 +310,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       const success = await loadAndPlay(track);
 
-      // If offline and track unavailable, try next
       if (!success && !navigator.onLine) {
         const nextIdx = getNextIndex();
         if (nextIdx !== -1 && nextIdx !== index) {
@@ -211,19 +320,131 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     [loadAndPlay, getNextIndex]
   );
 
-  // ----- Audio event listeners (attached once, use refs for latest state) -----
-  useEffect(() => {
-    const audio = audioRef.current;
+  // ----- Crossfade execution -----
+  const startCrossfade = useCallback(async (nextIdx: number) => {
+    const q = queueRef.current;
+    if (nextIdx < 0 || nextIdx >= q.length) return;
 
-    const handleTimeUpdate = () => {
+    xfadingRef.current = true;
+    const fadeDuration = crossfadeDurationRef.current;
+    const vol = volumeRef.current;
+
+    // Record play for the track that's ending
+    const endingTrack = currentTrackRef.current;
+    if (endingTrack) {
+      recordPlay(endingTrack.id).catch(() => {});
+    }
+
+    // Load next track into the inactive audio
+    const nextTrack = q[nextIdx];
+    const inactiveAudio = getInactiveAudio();
+    const inactiveUrlRef = getInactiveObjectUrlRef();
+    const loaded = await loadAudioSource(inactiveAudio, nextTrack, inactiveUrlRef);
+
+    if (!loaded) {
+      xfadingRef.current = false;
+      return;
+    }
+
+    // Start the next track at volume 0
+    inactiveAudio.volume = 0;
+    try {
+      await inactiveAudio.play();
+    } catch {
+      xfadingRef.current = false;
+      return;
+    }
+
+    // Update state to reflect the new track immediately
+    setCurrentTrack(nextTrack);
+    setQueueIndex(nextIdx);
+    queueIndexRef.current = nextIdx;
+    currentTrackRef.current = nextTrack;
+
+    // Swap active audio so the new track is now "active"
+    const fadingOutAudio = getActiveAudio(); // the old one, still playing
+    activeAudioId.current = activeAudioId.current === 'A' ? 'B' : 'A';
+    // Now getActiveAudio() returns inactiveAudio (the new track)
+    // fadingOutAudio is the old track, fading out
+
+    // Animate the volume crossfade
+    const startTime = performance.now();
+    const totalMs = fadeDuration * 1000;
+
+    xfadeTimerRef.current = setInterval(() => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(elapsed / totalMs, 1);
+
+      // Ease: sine curve for smooth feel
+      const fadeOut = Math.cos(progress * Math.PI * 0.5); // 1 → 0
+      const fadeIn = Math.sin(progress * Math.PI * 0.5);  // 0 → 1
+
+      fadingOutAudio.volume = vol * fadeOut;
+      getActiveAudio().volume = vol * fadeIn;
+
+      if (progress >= 1) {
+        // Crossfade complete
+        if (xfadeTimerRef.current) {
+          clearInterval(xfadeTimerRef.current);
+          xfadeTimerRef.current = null;
+        }
+        fadingOutAudio.pause();
+        fadingOutAudio.removeAttribute('src');
+        fadingOutAudio.load();
+        // Clean up old object URL
+        const oldUrlRef = getInactiveObjectUrlRef(); // after swap, inactive = old
+        if (oldUrlRef.current) {
+          URL.revokeObjectURL(oldUrlRef.current);
+          oldUrlRef.current = null;
+        }
+        getActiveAudio().volume = vol;
+        xfadingRef.current = false;
+      }
+    }, FADE_INTERVAL_MS);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadAudioSource]);
+
+  // ----- Audio event listeners (attached to BOTH audio elements) -----
+  useEffect(() => {
+    const audioA = audioARef.current;
+    const audioB = audioBRef.current;
+
+    const handleTimeUpdate = (e: Event) => {
+      const audio = e.target as HTMLAudioElement;
+      if (audio !== getActiveAudio()) return;
+
       setCurrentTime(audio.currentTime);
+
+      // Check if we should start crossfading
+      const xfadeSecs = crossfadeDurationRef.current;
+      if (
+        xfadeSecs > 0 &&
+        !xfadingRef.current &&
+        audio.duration > 0 &&
+        audio.duration > xfadeSecs &&
+        repeatRef.current !== 'one' &&
+        audio.currentTime >= audio.duration - xfadeSecs
+      ) {
+        const nextIdx = getNextIndex();
+        if (nextIdx !== -1) {
+          startCrossfade(nextIdx);
+        }
+      }
     };
 
-    const handleLoadedMetadata = () => {
+    const handleLoadedMetadata = (e: Event) => {
+      const audio = e.target as HTMLAudioElement;
+      if (audio !== getActiveAudio()) return;
       setDuration(audio.duration);
     };
 
-    const handleEnded = () => {
+    const handleEnded = (e: Event) => {
+      const audio = e.target as HTMLAudioElement;
+      if (audio !== getActiveAudio()) return;
+
+      // If crossfading already handled the transition, ignore
+      if (xfadingRef.current) return;
+
       setIsPlaying(false);
 
       // Record the play
@@ -235,13 +456,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const rep = repeatRef.current;
 
       if (rep === 'one') {
-        // Repeat single track
         audio.currentTime = 0;
         audio.play()
           .then(() => setIsPlaying(true))
           .catch(() => setIsPlaying(false));
       } else {
-        // Auto-next (handles both 'none' and 'all')
         const nextIdx = getNextIndex();
         if (nextIdx !== -1) {
           playByIndex(nextIdx);
@@ -249,16 +468,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audio.addEventListener('ended', handleEnded);
+    audioA.addEventListener('timeupdate', handleTimeUpdate);
+    audioA.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audioA.addEventListener('ended', handleEnded);
+    audioB.addEventListener('timeupdate', handleTimeUpdate);
+    audioB.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audioB.addEventListener('ended', handleEnded);
 
     return () => {
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.removeEventListener('ended', handleEnded);
+      audioA.removeEventListener('timeupdate', handleTimeUpdate);
+      audioA.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audioA.removeEventListener('ended', handleEnded);
+      audioB.removeEventListener('timeupdate', handleTimeUpdate);
+      audioB.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audioB.removeEventListener('ended', handleEnded);
     };
-  }, [getNextIndex, playByIndex]);
+  }, [getNextIndex, playByIndex, startCrossfade]);
 
   // ----- Flush pending plays when coming back online -----
   useEffect(() => {
@@ -266,7 +491,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       flushPendingPlays().catch(() => {});
     };
     window.addEventListener('online', handleOnline);
-    // Also flush on mount in case we came back online before the app opened
     flushPendingPlays().catch(() => {});
     return () => window.removeEventListener('online', handleOnline);
   }, []);
@@ -275,15 +499,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const play = useCallback(
     async (track: Track, playlist?: Track[]) => {
+      cancelCrossfade();
+
       if (playlist) {
         const trackIndex = playlist.findIndex((t) => t.id === track.id);
         setQueue(playlist);
         setQueueIndex(trackIndex >= 0 ? trackIndex : 0);
-        // Update refs immediately so handleEnded has the right data
         queueRef.current = playlist;
         queueIndexRef.current = trackIndex >= 0 ? trackIndex : 0;
       } else {
-        // Check if track is in current queue
         const idx = queueRef.current.findIndex((t) => t.id === track.id);
         if (idx !== -1) {
           setQueueIndex(idx);
@@ -300,18 +524,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       currentTrackRef.current = track;
       await loadAndPlay(track);
     },
-    [loadAndPlay]
+    [loadAndPlay, cancelCrossfade]
   );
 
   const pause = useCallback(() => {
-    audioRef.current.pause();
+    getActiveAudio().pause();
     setIsPlaying(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const resume = useCallback(() => {
-    audioRef.current.play()
+    getActiveAudio().play()
       .then(() => setIsPlaying(true))
       .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const togglePlayPause = useCallback(() => {
@@ -323,16 +549,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [isPlaying, pause, resume]);
 
   const next = useCallback(() => {
+    cancelCrossfade();
     const nextIdx = getNextIndex();
     if (nextIdx !== -1) {
       playByIndex(nextIdx);
     }
-  }, [getNextIndex, playByIndex]);
+  }, [getNextIndex, playByIndex, cancelCrossfade]);
 
   const previous = useCallback(() => {
-    // If more than 3 seconds in, restart the current track
-    if (audioRef.current.currentTime > 3) {
-      audioRef.current.currentTime = 0;
+    cancelCrossfade();
+    if (getActiveAudio().currentTime > 3) {
+      getActiveAudio().currentTime = 0;
       return;
     }
 
@@ -340,18 +567,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (prevIdx !== -1) {
       playByIndex(prevIdx);
     }
-  }, [getPrevIndex, playByIndex]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getPrevIndex, playByIndex, cancelCrossfade]);
 
   const seek = useCallback((time: number) => {
-    audioRef.current.currentTime = time;
+    const audio = getActiveAudio();
+    audio.currentTime = time;
     setCurrentTime(time);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setVolume = useCallback((vol: number) => {
     const clamped = Math.max(0, Math.min(1, vol));
     setVolumeState(clamped);
-    audioRef.current.volume = clamped;
+    if (!xfadingRef.current) {
+      getActiveAudio().volume = clamped;
+    }
     localStorage.setItem('stopefy-volume', String(clamped));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggleShuffle = useCallback(() => {
@@ -364,6 +597,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (r === 'one') return 'all';
       return 'none';
     });
+  }, []);
+
+  const setCrossfadeDuration = useCallback((seconds: number) => {
+    const clamped = Math.max(0, Math.min(12, seconds));
+    setCrossfadeDurationState(clamped);
+    localStorage.setItem(CROSSFADE_KEY, String(clamped));
   }, []);
 
   const addToQueue = useCallback((track: Track) => {
@@ -411,11 +650,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const clearQueue = useCallback(() => {
+    cancelCrossfade();
     setQueue([]);
     setQueueIndex(-1);
     queueRef.current = [];
     queueIndexRef.current = -1;
-  }, []);
+  }, [cancelCrossfade]);
 
   // Restore audio source + seek position on first mount (paused)
   useEffect(() => {
@@ -427,42 +667,41 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!track) return;
 
     (async () => {
-      // Clean up any existing object URL
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = null;
+      const audio = getActiveAudio();
+      const urlRef = getActiveObjectUrlRef();
+
+      if (urlRef.current) {
+        URL.revokeObjectURL(urlRef.current);
+        urlRef.current = null;
       }
 
       const offlineTrack = await getOfflineTrack(track.id);
       if (offlineTrack && offlineTrack.audioBlob) {
         const url = URL.createObjectURL(offlineTrack.audioBlob);
-        objectUrlRef.current = url;
-        audioRef.current.src = url;
+        urlRef.current = url;
+        audio.src = url;
       } else if (navigator.onLine) {
-        audioRef.current.src = getStreamUrl(track.id);
+        audio.src = getStreamUrl(track.id);
       } else {
         return;
       }
 
-      // Seek to saved position once metadata is loaded
       const handleLoaded = () => {
-        if (savedTime > 0 && savedTime < audioRef.current.duration) {
-          audioRef.current.currentTime = savedTime;
+        if (savedTime > 0 && savedTime < audio.duration) {
+          audio.currentTime = savedTime;
           setCurrentTime(savedTime);
         }
-        audioRef.current.removeEventListener('loadedmetadata', handleLoaded);
+        audio.removeEventListener('loadedmetadata', handleLoaded);
       };
-      audioRef.current.addEventListener('loadedmetadata', handleLoaded);
-      // Trigger load but don't play
-      audioRef.current.load();
+      audio.addEventListener('loadedmetadata', handleLoaded);
+      audio.load();
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist player state to localStorage (throttled via timeupdate already)
+  // Persist player state to localStorage
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    // Debounce saves to avoid hammering localStorage on every timeupdate
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
       savePersistedState({
@@ -479,20 +718,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      // Save final state before unmount
       savePersistedState({
         currentTrack: currentTrackRef.current,
         queue: queueRef.current,
         queueIndex: queueIndexRef.current,
-        currentTime: audioRef.current.currentTime,
+        currentTime: getActiveAudio().currentTime,
         shuffle: shuffleRef.current,
         repeat: repeatRef.current,
       });
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-      }
-      audioRef.current.pause();
+      if (xfadeTimerRef.current) clearInterval(xfadeTimerRef.current);
+      if (objectUrlARef.current) URL.revokeObjectURL(objectUrlARef.current);
+      if (objectUrlBRef.current) URL.revokeObjectURL(objectUrlBRef.current);
+      audioARef.current.pause();
+      audioBRef.current.pause();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -507,6 +747,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         volume,
         shuffle,
         repeat,
+        crossfadeDuration,
         play,
         pause,
         resume,
@@ -517,6 +758,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setVolume,
         toggleShuffle,
         cycleRepeat,
+        setCrossfadeDuration,
         addToQueue,
         removeFromQueue,
         reorderQueue,
