@@ -118,18 +118,16 @@ const TrackList: React.FC<TrackListProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             <AddToPlaylist track={track} size="sm" />
+            <button
+              className="btn btn--icon"
+              onClick={() => handleAddToQueue(track)}
+              title="Add to queue"
+              style={queuedIds.has(track.id) ? { color: '#1DB954' } : undefined}
+            >
+              {queuedIds.has(track.id) ? <Check size={16} /> : <Plus size={16} />}
+            </button>
             {!compact && (
-              <>
-                <button
-                  className="btn btn--icon"
-                  onClick={() => handleAddToQueue(track)}
-                  title="Add to queue"
-                  style={queuedIds.has(track.id) ? { color: '#1DB954' } : undefined}
-                >
-                  {queuedIds.has(track.id) ? <Check size={16} /> : <Plus size={16} />}
-                </button>
-                <DownloadButton track={track} size="sm" />
-              </>
+              <DownloadButton track={track} size="sm" />
             )}
             {onRemove && (
               <button

@@ -42,6 +42,92 @@ def admin_stats(
 
 
 # ---------------------------------------------------------------------------
+# GET /api/admin/pending
+# ---------------------------------------------------------------------------
+
+@router.get("/pending")
+def list_pending_registrations(
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(require_admin),
+):
+    pending = (
+        db.query(models.PendingRegistration)
+        .order_by(models.PendingRegistration.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": p.id,
+            "username": p.username,
+            "email": p.email,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in pending
+    ]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/admin/pending/{id}/approve
+# ---------------------------------------------------------------------------
+
+@router.post("/pending/{pending_id}/approve")
+def approve_registration(
+    pending_id: int,
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(require_admin),
+):
+    pending = (
+        db.query(models.PendingRegistration)
+        .filter(models.PendingRegistration.id == pending_id)
+        .first()
+    )
+    if not pending:
+        raise HTTPException(status_code=404, detail="Pending registration not found")
+
+    # Check for conflicts
+    if db.query(models.User).filter(models.User.username == pending.username).first():
+        raise HTTPException(status_code=400, detail="Username already taken by another user")
+    if db.query(models.User).filter(models.User.email == pending.email).first():
+        raise HTTPException(status_code=400, detail="Email already registered by another user")
+
+    user = models.User(
+        username=pending.username,
+        email=pending.email,
+        password_hash=pending.password_hash,
+        is_admin=False,
+    )
+    db.add(user)
+    db.delete(pending)
+    db.commit()
+    db.refresh(user)
+
+    return {"message": f"User '{user.username}' has been approved", "id": user.id, "username": user.username}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/admin/pending/{id}/reject
+# ---------------------------------------------------------------------------
+
+@router.delete("/pending/{pending_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
+def reject_registration(
+    pending_id: int,
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(require_admin),
+):
+    pending = (
+        db.query(models.PendingRegistration)
+        .filter(models.PendingRegistration.id == pending_id)
+        .first()
+    )
+    if not pending:
+        raise HTTPException(status_code=404, detail="Pending registration not found")
+
+    db.delete(pending)
+    db.commit()
+    return None
+
+
+# ---------------------------------------------------------------------------
 # GET /api/admin/users
 # ---------------------------------------------------------------------------
 
@@ -278,6 +364,41 @@ def compress_all_tracks(
         "total": len(tracks),
         "saved_mb": saved_mb,
         "message": f"Compressed {compressed} tracks, saved {saved_mb} MB",
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/admin/backfill-genres
+# ---------------------------------------------------------------------------
+
+@router.post("/backfill-genres")
+def backfill_genres(
+    db: Session = Depends(get_db),
+    admin: models.User = Depends(require_admin),
+):
+    """Re-classify genre for all tracks that are currently 'Unknown'."""
+    from genre_guesser import guess_genre
+
+    tracks = (
+        db.query(models.Track)
+        .filter(models.Track.genre.in_(["Unknown", "unknown", "", None]))
+        .all()
+    )
+
+    updated = 0
+    for track in tracks:
+        guessed = guess_genre(track.title, track.artist)
+        if guessed:
+            track.genre = guessed
+            updated += 1
+
+    if updated > 0:
+        db.commit()
+
+    return {
+        "updated": updated,
+        "total_unknown": len(tracks),
+        "message": f"Updated genre for {updated} of {len(tracks)} tracks",
     }
 
 

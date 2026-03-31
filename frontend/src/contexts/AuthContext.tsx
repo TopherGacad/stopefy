@@ -7,7 +7,6 @@ interface AuthContextType {
   loading: boolean;
   login: (username: string, password: string) => Promise<boolean>;
   register: (username: string, email: string, password: string) => Promise<{ success: boolean; email?: string; error?: string }>;
-  verifyOTP: (email: string, otp: string) => Promise<boolean>;
   updateUser: (user: User) => void;
   logout: () => void;
   isAdmin: boolean;
@@ -86,13 +85,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const verifyOTP = useCallback(async (email: string, otp: string) => {
-    const res = await api.verifyOTP(email, otp);
-    setUser(res.user);
-    setCachedUser(res.user);
-    return true;
-  }, []);
-
   const updateUser = useCallback((updatedUser: User) => {
     setUser(updatedUser);
     setCachedUser(updatedUser);
@@ -106,7 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, verifyOTP, updateUser, logout, isAdmin: user?.is_admin ?? false }}
+      value={{ user, loading, login, register, updateUser, logout, isAdmin: user?.is_admin ?? false }}
     >
       {children}
     </AuthContext.Provider>

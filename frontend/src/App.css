@@ -1944,6 +1944,115 @@ ol {
   margin-top: 2px;
 }
 
+/* Select mode */
+.library__select-btn {
+  background: transparent;
+  border: 1px solid #535353;
+  color: #b3b3b3;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.library__select-btn:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.library__row-check {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.library__row--selected {
+  background: rgba(29, 185, 84, 0.08);
+}
+
+.library__grid-card--selected {
+  background: rgba(29, 185, 84, 0.12);
+  border-radius: 8px;
+}
+
+.library__grid-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.library__select-bar {
+  position: fixed;
+  bottom: calc(var(--player-height) + 24px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  max-width: 360px;
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  background: #282828;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  animation: selectBarUp 0.2s ease;
+}
+
+@keyframes selectBarUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.library__select-bar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+  color: #fff;
+}
+
+.library__select-bar-btn:active {
+  transform: scale(0.97);
+}
+
+.library__select-bar-btn--cancel {
+  background: transparent;
+  color: #b3b3b3;
+  flex: 0.6;
+}
+
+.library__select-bar-btn--play {
+  background: #1db954;
+}
+
+.library__select-bar-btn--shuffle {
+  background: #535353;
+}
+
+.library__select-bar-btn:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 /* ===== Upload Page ===== */
 /* ===== Upload Page ===== */
 .upload {
@@ -4225,6 +4334,22 @@ ol {
   opacity: 1;
 }
 
+.queue-sheet__add-btn {
+  background: none;
+  border: none;
+  color: #A0A0A0;
+  flex-shrink: 0;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.queue-sheet__add-btn:active {
+  color: #fff;
+}
+
 .queue-sheet__row-grip {
   color: #A0A0A0;
   flex-shrink: 0;
@@ -4706,6 +4831,11 @@ ol {
 
   .player-bar__right {
     display: none;
+  }
+
+  /* --- Library select bar above player + tab bar --- */
+  .library__select-bar {
+    bottom: calc(64px + 64px + env(safe-area-inset-bottom, 0px) + 12px);
   }
 
   /* --- Track List --- */

@@ -116,33 +116,6 @@ export async function register(
   return res.json();
 }
 
-export async function verifyOTP(
-  email: string,
-  otp: string
-): Promise<{ user: User; access_token: string; refresh_token: string }> {
-  const res = await fetch(`${API_BASE}/auth/verify-otp`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, otp }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    let message: string;
-    try {
-      const json = JSON.parse(text);
-      message = json.detail || json.message || text;
-    } catch {
-      message = text;
-    }
-    throw new Error(message);
-  }
-
-  const data = await res.json();
-  setTokens(data.access_token, data.refresh_token);
-  return data;
-}
-
 export async function login(
   username: string,
   password: string
@@ -491,9 +464,28 @@ export async function adminDeleteUser(userId: number): Promise<void> {
   await fetchWithAuth(`${API_BASE}/admin/users/${userId}`, { method: 'DELETE' });
 }
 
+export async function adminBackfillGenres(): Promise<{ updated: number; total_unknown: number; message: string }> {
+  const res = await fetchWithAuth(`${API_BASE}/admin/backfill-genres`, { method: 'POST' });
+  return res.json();
+}
+
 export async function adminCompressAll(): Promise<{ compressed: number; total: number; saved_mb: number; message: string }> {
   const res = await fetchWithAuth(`${API_BASE}/admin/compress-all`, { method: 'POST' });
   return res.json();
+}
+
+export async function adminGetPending(): Promise<any[]> {
+  const res = await fetchWithAuth(`${API_BASE}/admin/pending`);
+  return res.json();
+}
+
+export async function adminApprovePending(id: number): Promise<{ message: string; id: number; username: string }> {
+  const res = await fetchWithAuth(`${API_BASE}/admin/pending/${id}/approve`, { method: 'POST' });
+  return res.json();
+}
+
+export async function adminRejectPending(id: number): Promise<void> {
+  await fetchWithAuth(`${API_BASE}/admin/pending/${id}/reject`, { method: 'DELETE' });
 }
 
 export async function adminGetSettings(): Promise<Record<string, string>> {

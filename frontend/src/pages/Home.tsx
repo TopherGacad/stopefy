@@ -119,43 +119,6 @@ const Home: React.FC = () => {
     </div>
   );
 
-  const renderPlaylistCard = (playlist: Playlist) => {
-    const coverUrl = playlist.cover_image
-      || (playlist.tracks && playlist.tracks.length > 0 ? playlist.tracks[0].cover_art_url : null);
-
-    return (
-      <div
-        key={playlist.id}
-        className="playlist-card"
-        onClick={() => navigate(`/playlist/${playlist.id}`)}
-      >
-        <div className="playlist-card__art">
-          {coverUrl ? (
-            <img src={coverUrl} alt={playlist.name} />
-          ) : (
-            <div
-              className="playlist-card__art-placeholder"
-              style={{
-                background: 'linear-gradient(135deg, #F5E500, #2E2E2E)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '100%',
-                height: '100%',
-              }}
-            >
-              <span style={{ fontSize: '2rem' }}>&#9835;</span>
-            </div>
-          )}
-        </div>
-        <div className="playlist-card__name">{playlist.name}</div>
-        <div className="playlist-card__count">
-          {playlist.track_count ?? 0} tracks
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="home">
       <div className="home__header">

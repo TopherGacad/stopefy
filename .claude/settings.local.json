@@ -24,7 +24,11 @@
       "Bash(ls:*)",
       "Bash(python:*)",
       "Bash(curl:*)",
-      "Bash(find /c/Users/USER/Desktop/stopefy/backend -type f -name *wrapped*)"
+      "Bash(find /c/Users/USER/Desktop/stopefy/backend -type f -name *wrapped*)",
+      "Bash(taskkill //F //IM uvicorn.exe)",
+      "Bash(taskkill //F //IM python.exe)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

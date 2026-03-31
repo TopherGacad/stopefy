@@ -8,6 +8,8 @@ import {
   Timer,
   Music,
   GripVertical,
+  Plus,
+  Check,
 } from 'lucide-react';
 
 const SWIPE_THRESHOLD = 80;
@@ -28,8 +30,24 @@ const QueueSheet: React.FC<QueueSheetProps> = ({ open, onClose }) => {
     togglePlayPause,
     toggleShuffle,
     reorderQueue,
+    addToQueue,
     play,
   } = usePlayer();
+
+  // "Added" feedback: keyed by a unique tap id (not track.id, since duplicates are allowed)
+  const [addedKeys, setAddedKeys] = useState<Set<string>>(new Set());
+
+  const handleAddToQueue = useCallback((track: Track, key: string) => {
+    addToQueue(track);
+    setAddedKeys((prev) => new Set(prev).add(key));
+    setTimeout(() => {
+      setAddedKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }, 1200);
+  }, [addToQueue]);
 
   // Sheet dismiss state
   const [closing, setClosing] = useState(false);
@@ -200,6 +218,13 @@ const QueueSheet: React.FC<QueueSheetProps> = ({ open, onClose }) => {
                   <span className="queue-sheet__np-name">{currentTrack.title}</span>
                   <span className="queue-sheet__np-artist">{currentTrack.artist}</span>
                 </div>
+                <button
+                  className="queue-sheet__add-btn"
+                  onClick={() => handleAddToQueue(currentTrack, 'np')}
+                  title="Add to queue again"
+                >
+                  {addedKeys.has('np') ? <Check size={16} color="#1db954" /> : <Plus size={16} />}
+                </button>
                 <button className="queue-sheet__pp-btn" onClick={togglePlayPause}>
                   {isPlaying ? <Pause size={18} fill="#000" stroke="#000" /> : <Play size={18} fill="#000" stroke="#000" />}
                 </button>
@@ -245,6 +270,13 @@ const QueueSheet: React.FC<QueueSheetProps> = ({ open, onClose }) => {
                       <span className="queue-sheet__row-name">{track.title}</span>
                       <span className="queue-sheet__row-artist">{track.artist}</span>
                     </div>
+                    <button
+                      className="queue-sheet__add-btn"
+                      onClick={(e) => { e.stopPropagation(); handleAddToQueue(track, `row-${i}`); }}
+                      title="Add to queue again"
+                    >
+                      {addedKeys.has(`row-${i}`) ? <Check size={14} color="#1db954" /> : <Plus size={14} />}
+                    </button>
                     <div
                       className="queue-sheet__row-grip"
                       onTouchStart={(e) => handleGripTouchStart(e, i)}

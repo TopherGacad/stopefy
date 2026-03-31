@@ -18,6 +18,9 @@ import {
   CheckSquare,
   Square,
   Sparkles,
+  UserCheck,
+  UserX,
+  Clock,
 } from 'lucide-react';
 
 interface Stats {
@@ -37,6 +40,13 @@ interface AdminUser {
   track_count: number;
 }
 
+interface PendingReg {
+  id: number;
+  username: string;
+  email: string;
+  created_at: string;
+}
+
 interface AdminTrack {
   id: number;
   title: string;
@@ -52,7 +62,7 @@ interface AdminTrack {
   file_size: number | null;
 }
 
-type Tab = 'overview' | 'tracks' | 'users';
+type Tab = 'overview' | 'tracks' | 'users' | 'pending';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -96,6 +106,11 @@ const Admin: React.FC = () => {
   const [editValues, setEditValues] = useState<{ title: string; artist: string; genre: string }>({ title: '', artist: '', genre: '' });
   const [compressing, setCompressing] = useState(false);
   const [compressMsg, setCompressMsg] = useState('');
+  const [backfillingGenres, setBackfillingGenres] = useState(false);
+  const [genreMsg, setGenreMsg] = useState('');
+  const [pendingRegs, setPendingRegs] = useState<PendingReg[]>([]);
+  const [approvingId, setApprovingId] = useState<number | null>(null);
+  const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [wrappedEnabled, setWrappedEnabled] = useState(false);
 
   const TRACKS_PER_PAGE = 20;
@@ -138,6 +153,15 @@ const Admin: React.FC = () => {
     }
   }, []);
 
+  const fetchPending = useCallback(async () => {
+    try {
+      const data = await api.adminGetPending();
+      setPendingRegs(data);
+    } catch (err) {
+      console.error('Failed to fetch pending registrations:', err);
+    }
+  }, []);
+
   const fetchSettings = useCallback(async () => {
     try {
       const data = await api.adminGetSettings();
@@ -160,11 +184,37 @@ const Admin: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchStats(), fetchUsers(), fetchTracks(), fetchSettings()]);
+      await Promise.all([fetchStats(), fetchUsers(), fetchTracks(), fetchSettings(), fetchPending()]);
       setLoading(false);
     };
     loadData();
-  }, [fetchStats, fetchUsers, fetchTracks, fetchSettings]);
+  }, [fetchStats, fetchUsers, fetchTracks, fetchSettings, fetchPending]);
+
+  const handleApprove = async (id: number) => {
+    setApprovingId(id);
+    try {
+      await api.adminApprovePending(id);
+      setPendingRegs((prev) => prev.filter((p) => p.id !== id));
+      fetchStats();
+      fetchUsers();
+    } catch (err) {
+      console.error('Approve failed:', err);
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const handleReject = async (id: number) => {
+    setRejectingId(id);
+    try {
+      await api.adminRejectPending(id);
+      setPendingRegs((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      console.error('Reject failed:', err);
+    } finally {
+      setRejectingId(null);
+    }
+  };
 
   const handleDeleteTrack = async (trackId: number) => {
     setDeleting(trackId);
@@ -329,6 +379,12 @@ const Admin: React.FC = () => {
           >
             Users ({stats?.total_users ?? 0})
           </button>
+          <button
+            className={`admin__tab ${tab === 'pending' ? 'admin__tab--active' : ''}`}
+            onClick={() => setTab('pending')}
+          >
+            Pending {pendingRegs.length > 0 && `(${pendingRegs.length})`}
+          </button>
         </div>
         <div className="admin__tabs-divider" />
       </div>
@@ -388,6 +444,37 @@ const Admin: React.FC = () => {
               )}
             </button>
             {compressMsg && <div className="admin__compress-msg">{compressMsg}</div>}
+          </div>
+
+          <div className="admin__compress-card">
+            <div className="admin__compress-title">Auto-Detect Genres</div>
+            <div className="admin__compress-subtitle">
+              Scans all tracks with "Unknown" genre and tries to detect genre from artist name and title.
+            </div>
+            <button
+              className="admin__compress-btn"
+              onClick={async () => {
+                setBackfillingGenres(true);
+                setGenreMsg('');
+                try {
+                  const result = await api.adminBackfillGenres();
+                  setGenreMsg(result.message);
+                  fetchTracks();
+                } catch (err: any) {
+                  setGenreMsg(err?.message || 'Genre detection failed');
+                } finally {
+                  setBackfillingGenres(false);
+                }
+              }}
+              disabled={backfillingGenres}
+            >
+              {backfillingGenres ? (
+                <><Loader size={16} className="spin" /> Detecting...</>
+              ) : (
+                'Detect Genres'
+              )}
+            </button>
+            {genreMsg && <div className="admin__compress-msg">{genreMsg}</div>}
           </div>
 
           <div className="admin__toggle-card">
@@ -482,7 +569,7 @@ const Admin: React.FC = () => {
 
                 <div className="admin__track-info" onClick={() => startEditing(track)}>
                   {editingTrack === track.id ? (
-                    <div className="admin__track-edit">
+                    <div className="admin__track-edit" onClick={(e) => e.stopPropagation()}>
                       <input
                         className="admin__edit-input"
                         value={editValues.title}
@@ -640,6 +727,51 @@ const Admin: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ===== Pending Registrations Tab ===== */}
+      {tab === 'pending' && (
+        <div className="admin__section">
+          {pendingRegs.length === 0 ? (
+            <div className="admin__empty">No pending registrations.</div>
+          ) : (
+            <div className="admin__user-list">
+              {pendingRegs.map((p) => (
+                <div key={p.id} className="admin__user-card">
+                  <div className="admin__user-row1">
+                    <div className="admin__user-name">
+                      <Clock size={16} style={{ color: '#F5E500', marginRight: 6, verticalAlign: 'middle' }} />
+                      {p.username}
+                    </div>
+                  </div>
+                  <div className="admin__user-email">{p.email}</div>
+                  <div className="admin__user-row3">
+                    <span className="admin__user-date">Requested {formatDate(p.created_at)}</span>
+                    <div className="admin__user-actions">
+                      <button
+                        className="admin__user-action-btn"
+                        style={{ color: '#4caf50' }}
+                        onClick={() => handleApprove(p.id)}
+                        disabled={approvingId === p.id}
+                        title="Approve"
+                      >
+                        {approvingId === p.id ? <Loader size={20} className="spin" /> : <UserCheck size={20} />}
+                      </button>
+                      <button
+                        className="admin__user-action-btn admin__user-action-btn--danger"
+                        onClick={() => handleReject(p.id)}
+                        disabled={rejectingId === p.id}
+                        title="Reject"
+                      >
+                        {rejectingId === p.id ? <Loader size={20} className="spin" /> : <UserX size={20} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

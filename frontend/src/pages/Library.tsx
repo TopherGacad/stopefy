@@ -6,7 +6,7 @@ import { Playlist } from '../types';
 import { getAllOfflineTracks, removeOfflineTrack, getOfflineStorageUsage } from '../db';
 import type { DownloadedTrack } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { Plus, Download, Music2, ListMusic, Trash2, HardDrive, Search } from 'lucide-react';
+import { Plus, Download, Music2, ListMusic, Trash2, HardDrive, Search, CheckCircle2, Circle, Play, Shuffle, X } from 'lucide-react';
 
 const FILTER_CHIPS = ['Playlists', 'Downloads'] as const;
 type FilterChip = typeof FILTER_CHIPS[number];
@@ -69,6 +69,44 @@ const Library: React.FC = () => {
   const [downloadedTracks, setDownloadedTracks] = useState<DownloadedTrack[]>([]);
   const [storageUsage, setStorageUsage] = useState<{ count: number; sizeBytes: number }>({ count: 0, sizeBytes: 0 });
   const [loading, setLoading] = useState(true);
+
+  // Select mode
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      if (next.size === 0) setSelectMode(false);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handlePlaySelected = (shuffle?: boolean) => {
+    const selected = playlists.filter((p) => selectedIds.has(p.id));
+    const combined = selected.flatMap((p) => p.tracks || []);
+    if (combined.length === 0) return;
+
+    if (shuffle) {
+      // Fisher-Yates shuffle
+      const shuffled = [...combined];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      player.play(shuffled[0], shuffled);
+    } else {
+      player.play(combined[0], combined);
+    }
+    exitSelectMode();
+  };
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -148,12 +186,20 @@ const Library: React.FC = () => {
         </div>
         <h1 className="library__title">Your Library</h1>
         <div className="library__topbar-actions">
-          <button className="library__icon-btn" onClick={() => navigate('/search')}>
-            <Search size={22} />
-          </button>
-          <button className="library__icon-btn" onClick={() => setShowModal(true)}>
-            <Plus size={24} />
-          </button>
+          {selectMode ? (
+            <button className="library__icon-btn" onClick={exitSelectMode}>
+              <X size={22} />
+            </button>
+          ) : (
+            <>
+              <button className="library__icon-btn" onClick={() => navigate('/search')}>
+                <Search size={22} />
+              </button>
+              <button className="library__icon-btn" onClick={() => setShowModal(true)}>
+                <Plus size={24} />
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -163,7 +209,7 @@ const Library: React.FC = () => {
           <button
             key={chip}
             className={`library__chip ${activeChip === chip ? 'library__chip--active' : ''}`}
-            onClick={() => setActiveChip(chip)}
+            onClick={() => { setActiveChip(chip); if (selectMode) exitSelectMode(); }}
           >
             {chip}
           </button>
@@ -172,13 +218,27 @@ const Library: React.FC = () => {
 
       {/* Sort row */}
       <div className="library__sort-row">
-        <span className="library__sort-label">Recently added</span>
-        <button
-          className="library__icon-btn"
-          onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
-        >
-          {viewMode === 'list' ? <ListMusic size={18} /> : <Music2 size={18} />}
-        </button>
+        {selectMode ? (
+          <span className="library__sort-label">{selectedIds.size} selected</span>
+        ) : (
+          <span className="library__sort-label">Recently added</span>
+        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {!selectMode && activeChip === 'Playlists' && playlists.length > 1 && (
+            <button
+              className="library__select-btn"
+              onClick={() => setSelectMode(true)}
+            >
+              Select
+            </button>
+          )}
+          <button
+            className="library__icon-btn"
+            onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
+          >
+            {viewMode === 'list' ? <ListMusic size={18} /> : <Music2 size={18} />}
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -198,16 +258,32 @@ const Library: React.FC = () => {
                   {playlists.map((playlist) => (
                     <div
                       key={playlist.id}
-                      className="library__row"
-                      onClick={() => navigate(`/playlist/${playlist.id}`)}
+                      className={`library__row ${selectMode && selectedIds.has(playlist.id) ? 'library__row--selected' : ''}`}
+                      onClick={() => selectMode ? toggleSelect(playlist.id) : navigate(`/playlist/${playlist.id}`)}
+                      onContextMenu={(e) => {
+                        if (!selectMode) {
+                          e.preventDefault();
+                          setSelectMode(true);
+                          setSelectedIds(new Set([playlist.id]));
+                        }
+                      }}
                     >
+                      {selectMode && (
+                        <div className="library__row-check">
+                          {selectedIds.has(playlist.id) ? (
+                            <CheckCircle2 size={18} color="#1db954" />
+                          ) : (
+                            <Circle size={18} color="#727272" />
+                          )}
+                        </div>
+                      )}
                       <div className="library__row-thumb">
                         <PlaylistThumb playlist={playlist} />
                       </div>
                       <div className="library__row-text">
                         <span className="library__row-title">{playlist.name}</span>
                         <span className="library__row-subtitle">
-                          Playlist &bull; {user?.username || 'You'}
+                          Playlist &bull; {playlist.track_count} tracks
                         </span>
                       </div>
                     </div>
@@ -218,15 +294,31 @@ const Library: React.FC = () => {
                   {playlists.map((playlist) => (
                     <div
                       key={playlist.id}
-                      className="library__grid-card"
-                      onClick={() => navigate(`/playlist/${playlist.id}`)}
+                      className={`library__grid-card ${selectMode && selectedIds.has(playlist.id) ? 'library__grid-card--selected' : ''}`}
+                      onClick={() => selectMode ? toggleSelect(playlist.id) : navigate(`/playlist/${playlist.id}`)}
+                      onContextMenu={(e) => {
+                        if (!selectMode) {
+                          e.preventDefault();
+                          setSelectMode(true);
+                          setSelectedIds(new Set([playlist.id]));
+                        }
+                      }}
                     >
-                      <div className="library__grid-card-art">
+                      <div className="library__grid-card-art" style={{ position: 'relative' }}>
                         <PlaylistThumb playlist={playlist} />
+                        {selectMode && (
+                          <div className="library__grid-check">
+                            {selectedIds.has(playlist.id) ? (
+                              <CheckCircle2 size={18} color="#1db954" />
+                            ) : (
+                              <Circle size={18} color="#727272" />
+                            )}
+                          </div>
+                        )}
                       </div>
                       <span className="library__grid-card-title">{playlist.name}</span>
                       <span className="library__grid-card-sub">
-                        Playlist &bull; {user?.username || 'You'}
+                        Playlist &bull; {playlist.track_count} tracks
                       </span>
                     </div>
                   ))}
@@ -291,6 +383,34 @@ const Library: React.FC = () => {
             </>
           )}
         </>
+      )}
+
+      {/* Select mode action bar */}
+      {selectMode && (
+        <div className="library__select-bar">
+          <button
+            className="library__select-bar-btn library__select-bar-btn--cancel"
+            onClick={exitSelectMode}
+          >
+            Cancel
+          </button>
+          <button
+            className="library__select-bar-btn library__select-bar-btn--play"
+            onClick={() => handlePlaySelected(false)}
+            disabled={selectedIds.size === 0}
+          >
+            <Play size={16} fill="#fff" />
+            <span>Play ({selectedIds.size})</span>
+          </button>
+          <button
+            className="library__select-bar-btn library__select-bar-btn--shuffle"
+            onClick={() => handlePlaySelected(true)}
+            disabled={selectedIds.size === 0}
+          >
+            <Shuffle size={15} />
+            <span>Shuffle</span>
+          </button>
+        </div>
       )}
 
       {/* Create Playlist Modal */}

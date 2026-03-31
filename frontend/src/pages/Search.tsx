@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import * as api from '../api';
-import { Playlist, SearchResults } from '../types';
+import { Playlist, SearchResults, Track } from '../types';
 import TrackList from '../components/TrackList';
 import { Search as SearchIcon, Camera, Music, X, Clock, CloudSun, Flame, PartyPopper, Target, CloudRain, Car, Heart, Zap } from 'lucide-react';
 
@@ -9,14 +9,14 @@ const RECENT_SEARCHES_KEY = 'stopefy_recent_searches';
 const MAX_RECENT = 8;
 
 const MOODS = [
-  { name: 'Chill', Icon: CloudSun, gradient: 'linear-gradient(135deg, #00B4DB, #0083B0)', keywords: 'chill lo-fi relaxing' },
-  { name: 'Workout', Icon: Flame, gradient: 'linear-gradient(135deg, #F5E500, #FF6B6B)', keywords: 'workout energy pump' },
-  { name: 'Party', Icon: PartyPopper, gradient: 'linear-gradient(135deg, #FF4500, #FF8C00)', keywords: 'party dance upbeat' },
-  { name: 'Focus', Icon: Target, gradient: 'linear-gradient(135deg, #667eea, #764ba2)', keywords: 'focus study instrumental' },
-  { name: 'Sad', Icon: CloudRain, gradient: 'linear-gradient(135deg, #4B6CB7, #182848)', keywords: 'sad emotional heartbreak' },
-  { name: 'Drive', Icon: Car, gradient: 'linear-gradient(135deg, #E13333, #1A1A1A)', keywords: 'drive road trip cruising' },
-  { name: 'Romance', Icon: Heart, gradient: 'linear-gradient(135deg, #8B008B, #FF69B4)', keywords: 'love romantic slow' },
-  { name: 'Hype', Icon: Zap, gradient: 'linear-gradient(135deg, #F5E500, #1DB954)', keywords: 'hype rap hip-hop' },
+  { name: 'Chill', Icon: CloudSun, gradient: 'linear-gradient(135deg, #00B4DB, #0083B0)', genres: 'Acoustic,Indie,Folk,Jazz' },
+  { name: 'Workout', Icon: Flame, gradient: 'linear-gradient(135deg, #F5E500, #FF6B6B)', genres: 'Hip-Hop,Electronic,Dance,Metal' },
+  { name: 'Party', Icon: PartyPopper, gradient: 'linear-gradient(135deg, #FF4500, #FF8C00)', genres: 'Pop,Dance,Electronic,Latin,K-Pop' },
+  { name: 'Focus', Icon: Target, gradient: 'linear-gradient(135deg, #667eea, #764ba2)', genres: 'Classical,Jazz,Acoustic,Electronic' },
+  { name: 'Sad', Icon: CloudRain, gradient: 'linear-gradient(135deg, #4B6CB7, #182848)', genres: 'R&B,Indie,Folk,Soul,Acoustic' },
+  { name: 'Drive', Icon: Car, gradient: 'linear-gradient(135deg, #E13333, #1A1A1A)', genres: 'Rock,Pop,Hip-Hop,Alternative' },
+  { name: 'Romance', Icon: Heart, gradient: 'linear-gradient(135deg, #8B008B, #FF69B4)', genres: 'R&B,Pop,Soul,OPM,Acoustic' },
+  { name: 'Hype', Icon: Zap, gradient: 'linear-gradient(135deg, #F5E500, #1DB954)', genres: 'Hip-Hop,Electronic,K-Pop,Latin,Dance' },
 ];
 
 function getRecentSearches(): string[] {
@@ -59,12 +59,14 @@ function getArtistColor(name: string): string {
 }
 
 const Search: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>(getRecentSearches());
+  const [activeMood, setActiveMood] = useState<string | null>(null);
+  const [moodTracks, setMoodTracks] = useState<Track[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const performSearch = useCallback(async (searchQuery: string, save = true) => {
@@ -94,8 +96,13 @@ const Search: React.FC = () => {
   useEffect(() => {
     const genre = searchParams.get('genre');
     if (genre) {
-      setQuery(genre);
-      performSearch(genre);
+      const mood = MOODS.find((m) => m.name === genre);
+      if (mood) {
+        handleMoodClick(mood);
+      } else {
+        setQuery(genre);
+        performSearch(genre);
+      }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -103,6 +110,10 @@ const Search: React.FC = () => {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setQuery(value);
+    if (activeMood) {
+      setActiveMood(null);
+      setMoodTracks([]);
+    }
 
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -118,10 +129,21 @@ const Search: React.FC = () => {
     performSearch(artistName);
   };
 
-  const handleMoodClick = (mood: typeof MOODS[0]) => {
-    setQuery(mood.keywords);
-    setSearchParams({ genre: mood.name });
-    performSearch(mood.keywords);
+  const handleMoodClick = async (mood: typeof MOODS[0]) => {
+    setQuery('');
+    setResults(null);
+    setHasSearched(false);
+    setActiveMood(mood.name);
+    setLoading(true);
+    try {
+      const data = await api.getTracks({ genre: mood.genres, limit: 50 });
+      setMoodTracks(data.tracks || []);
+    } catch (err) {
+      console.error('Mood fetch failed:', err);
+      setMoodTracks([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleRecentClick = (term: string) => {
@@ -140,7 +162,7 @@ const Search: React.FC = () => {
     setRecentSearches([]);
   };
 
-  const showBrowse = !query && !hasSearched;
+  const showBrowse = !query && !hasSearched && !activeMood;
   const showResults = hasSearched && results;
   const noResults =
     hasSearched &&
@@ -318,6 +340,21 @@ const Search: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {!loading && activeMood && (
+        <div className="search__results">
+          <div className="section">
+            <h2 className="section__title">{activeMood}</h2>
+            {moodTracks.length > 0 ? (
+              <TrackList tracks={moodTracks} compact />
+            ) : (
+              <div style={{ color: '#6B6B6B', textAlign: 'center', padding: '2rem' }}>
+                No tracks found for this mood. Try adding more music!
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

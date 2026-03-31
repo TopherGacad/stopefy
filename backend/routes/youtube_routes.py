@@ -260,6 +260,13 @@ def youtube_download(
                 genre = tag.title()
                 break
 
+    # Fallback: guess from artist/title
+    if genre == "Unknown":
+        from genre_guesser import guess_genre
+        guessed = guess_genre(title, artist)
+        if guessed:
+            genre = guessed
+
     track = models.Track(
         title=title,
         artist=artist,

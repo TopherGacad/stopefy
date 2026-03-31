@@ -21,12 +21,6 @@ class Settings:
     # Audio quality: 128 = good balance of size/quality (~3MB per song)
     # 192 = higher quality (~5MB), 96 = smaller (~2MB)
     AUDIO_BITRATE: str = "128"
-    # Gmail SMTP — use an App Password from Google Security settings
-    SMTP_HOST: str = "smtp.gmail.com"
-    SMTP_PORT: int = 587
-    SMTP_USER: str = os.environ.get("SMTP_USER", "")
-    SMTP_APP_PASSWORD: str = os.environ.get("SMTP_APP_PASSWORD", "")
-    OTP_EXPIRE_MINUTES: int = 10
 
 
 settings = Settings()

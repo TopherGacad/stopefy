@@ -117,7 +117,13 @@ def list_tracks(
     query = db.query(models.Track)
 
     if genre:
-        query = query.filter(models.Track.genre.ilike(f"%{genre}%"))
+        # Support comma-separated genres for mood filtering
+        genre_list = [g.strip() for g in genre.split(",") if g.strip()]
+        if len(genre_list) == 1:
+            query = query.filter(models.Track.genre.ilike(f"%{genre_list[0]}%"))
+        else:
+            from sqlalchemy import or_
+            query = query.filter(or_(*(models.Track.genre.ilike(f"%{g}%") for g in genre_list)))
     if artist:
         query = query.filter(models.Track.artist.ilike(f"%{artist}%"))
     if search:
@@ -531,6 +537,13 @@ def upload_track(
     except Exception:
         # If mutagen fails entirely, just use defaults
         pass
+
+    # Fallback: guess genre from artist/title if still unknown
+    if genre == "Unknown":
+        from genre_guesser import guess_genre
+        guessed = guess_genre(title, artist)
+        if guessed:
+            genre = guessed
 
     # --- Compress audio to target bitrate to save storage ---
     compressed_path = _compress_audio(file_path, settings.AUDIO_BITRATE)

@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Clock } from 'lucide-react';
 
 function friendlyError(raw: string): string {
   const msg = (raw || '').toLowerCase();
@@ -25,23 +25,17 @@ function friendlyError(raw: string): string {
   if (msg.includes('authentication failed') || msg.includes('invalid or expired token'))
     return 'Your session has expired. Please log in again.';
 
-  // OTP
-  if (msg.includes('invalid verification code'))
-    return 'The code you entered is incorrect. Please check and try again.';
-  if (msg.includes('expired'))
-    return 'Your verification code has expired. Please register again to get a new code.';
-  if (msg.includes('no pending registration'))
-    return 'No verification in progress. Please register again.';
-
-  // Email
-  if (msg.includes('failed to send verification email') || msg.includes('failed to send'))
-    return 'We couldn\'t send the verification email. Please try again in a moment.';
+  // Pending approval
+  if (msg.includes('pending admin approval'))
+    return 'Your account is pending admin approval. Please wait.';
+  if (msg.includes('already pending'))
+    return 'A registration request is already pending. Please wait for admin approval.';
 
   // Server errors
   if (msg.includes('500') || msg.includes('internal server error'))
     return 'Something went wrong on our end. Please try again later.';
 
-  // If the message is already readable (no weird codes/stack traces), return it
+  // If the message is already readable, return it
   if (raw.length < 100 && !msg.includes('traceback') && !msg.includes('error:'))
     return raw;
 
@@ -64,45 +58,10 @@ const Auth: React.FC<AuthProps> = ({ mode }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // OTP state
-  const [otpStep, setOtpStep] = useState(false);
-  const [pendingEmail, setPendingEmail] = useState('');
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [pendingApproval, setPendingApproval] = useState(false);
 
   const validateEmail = (email: string): boolean => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
-
-  const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
-    const newOtp = [...otp];
-    newOtp[index] = value.slice(-1);
-    setOtp(newOtp);
-
-    if (value && index < 5) {
-      otpRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      otpRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const handleOtpPaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    if (pasted.length === 0) return;
-    const newOtp = [...otp];
-    for (let i = 0; i < 6; i++) {
-      newOtp[i] = pasted[i] || '';
-    }
-    setOtp(newOtp);
-    const focusIndex = Math.min(pasted.length, 5);
-    otpRefs.current[focusIndex]?.focus();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -143,10 +102,8 @@ const Auth: React.FC<AuthProps> = ({ mode }) => {
         navigate('/');
       } else {
         const res = await auth.register(username, email, password);
-        if (res.success && res.email) {
-          setPendingEmail(res.email);
-          setOtpStep(true);
-          showToast('Verification code sent to your email', 'success');
+        if (res.success) {
+          setPendingApproval(true);
         } else {
           showToast(friendlyError(res.error || ''), 'error');
         }
@@ -158,29 +115,8 @@ const Auth: React.FC<AuthProps> = ({ mode }) => {
     }
   };
 
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const code = otp.join('');
-
-    if (code.length !== 6) {
-      showToast('Please enter the 6-digit code', 'error');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await auth.verifyOTP(pendingEmail, code);
-      showToast('Account created successfully!', 'success');
-      navigate('/');
-    } catch (err: any) {
-      showToast(friendlyError(err?.message), 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // OTP verification screen
-  if (otpStep) {
+  // Pending approval screen
+  if (pendingApproval) {
     return (
       <div className="auth">
         <div className="auth__card">
@@ -188,51 +124,17 @@ const Auth: React.FC<AuthProps> = ({ mode }) => {
             <img src="/web/icon-192.png" alt="Stopefy" className="auth__logo-icon" />
           </div>
 
-          <h1 className="auth__title">Verify your email</h1>
+          <div style={{ textAlign: 'center', margin: '16px 0' }}>
+            <Clock size={48} style={{ color: '#F5E500', marginBottom: 12 }} />
+          </div>
+
+          <h1 className="auth__title">Pending Approval</h1>
           <p className="auth__subtitle">
-            We sent a 6-digit code to <strong>{pendingEmail}</strong>
+            Your account has been submitted for review. An admin will approve your registration shortly.
           </p>
 
-          <form className="auth__form" onSubmit={handleVerifyOtp}>
-            <div className="auth__otp-container">
-              {otp.map((digit, i) => (
-                <input
-                  key={i}
-                  ref={(el) => { otpRefs.current[i] = el; }}
-                  className="auth__otp-input"
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleOtpChange(i, e.target.value)}
-                  onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                  onPaste={i === 0 ? handleOtpPaste : undefined}
-                  autoFocus={i === 0}
-                />
-              ))}
-            </div>
-
-            <button
-              type="submit"
-              className={`auth__submit${loading ? ' auth__submit--loading' : ''}`}
-              disabled={loading}
-            >
-              {loading ? 'Verifying...' : 'Verify & Create Account'}
-            </button>
-          </form>
-
           <p className="auth__switch">
-            Didn&apos;t receive the code?{' '}
-            <button
-              type="button"
-              className="auth__resend"
-              onClick={() => {
-                setOtpStep(false);
-                setOtp(['', '', '', '', '', '']);
-              }}
-            >
-              Go back
-            </button>
+            <Link to="/login">Back to Login</Link>
           </p>
         </div>
       </div>
