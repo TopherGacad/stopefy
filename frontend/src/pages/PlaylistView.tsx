@@ -97,7 +97,11 @@ const PlaylistView: React.FC = () => {
 
   const handleShuffle = () => {
     if (tracks.length === 0) return;
-    const shuffled = [...tracks].sort(() => Math.random() - 0.5);
+    const shuffled = [...tracks];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
     player.play(shuffled[0], shuffled);
   };
 
